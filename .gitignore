@@ -1,0 +1,65 @@
+# Virtual Environment
+
+.venv/
+
+venv/
+
+# Python
+
+__pycache__/
+
+*.pyc
+
+*.pyo
+
+*.pyd
+
+.pytest_cache/
+
+.mypy_cache/
+
+# IDE
+
+.idea/
+
+.vscode/
+
+# Environment
+
+.env
+
+# Database
+
+*.db
+
+*.sqlite3
+
+# Logs
+
+logs/
+
+*.log
+
+# Chroma
+
+vector_db/
+
+# Memory
+
+memory_store/
+
+# Build
+
+dist/
+
+build/
+
+*.egg-info/
+
+# macOS
+
+.DS_Store
+
+# Windows
+
+Thumbs.db
