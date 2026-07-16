@@ -1,115 +1,179 @@
 """
-Centralized application configuration.
+Application configuration management.
 
 Loads:
-- .env
-- backend/config/api_keys.yaml
+- environment variables
+- provider configuration
+- application settings
 
-Python: 3.13
+Compatible with:
+Python 3.13
+Pydantic v2
 """
 
-from __future__ import annotations
-
-from functools import lru_cache
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from pydantic_settings import (
+    BaseSettings,
+    SettingsConfigDict,
+)
 
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
+PROVIDERS_FILE = (
+    BASE_DIR
+    /
+    "backend"
+    /
+    "config"
+    /
+    "providers.yaml"
+)
 
 
-class GeminiKey(BaseModel):
-    name: str
-    key: str
+class Settings(BaseSettings):
+
+    # ==========================
+    # Application
+    # ==========================
+
+    APP_NAME: str = (
+        "Digital Twin of Andrew Ng"
+    )
+
+    APP_VERSION: str = "1.0.0"
+
+    APP_ENV: str = "development"
+
+    HOST: str = "127.0.0.1"
+
+    PORT: int = 8000
+
+    DEBUG: bool = True
+
+    LOG_LEVEL: str = "INFO"
 
 
-class GeminiProviderConfig(BaseModel):
-    model: str = "gemini-2.5-flash"
+    # ==========================
+    # Database
+    # ==========================
 
-    temperature: float = 0.3
-
-    timeout: int = 60
-
-    max_retries: int = 5
-
-    keys: list[GeminiKey] = Field(default_factory=list)
-
-
-class ProvidersConfig(BaseModel):
-    gemini: GeminiProviderConfig
-
-
-class ApplicationConfig(BaseSettings):
-
-    app_name: str = "Digital Twin of Andrew Ng"
-
-    version: str = "1.0.0"
-
-    environment: str = "development"
-
-    host: str = "127.0.0.1"
-
-    port: int = 8000
-
-    log_level: str = "INFO"
-
-    database_url: str = (
+    DATABASE_URL: str = (
         "sqlite:///backend/database/database.db"
     )
 
-    chroma_directory: str = "vector_db"
 
-    memory_directory: str = "memory_store"
+    # ==========================
+    # Storage
+    # ==========================
 
-    scientist_directory: str = "scientist_data"
+    CHROMA_DB_PATH: str = "vector_db"
+
+    MEMORY_STORE_PATH: str = "memory_store"
+
+    SCIENTIST_DATA_PATH: str = "scientist_data"
+
+
+    # ==========================
+    # Gemini Keys
+    # ==========================
+
+    GEMINI_API_KEYS: str = ""
+
+    # ==========================
+    # Gemini Models
+    # ==========================
+
+    PRIMARY_MODEL: str = (
+        "gemini-3.5-flash"
+    )
+
+    FALLBACK_MODEL: str = (
+        "gemini-2.5-pro"
+    )
+
+    FAST_MODEL: str = (
+        "gemini-3.1-flash-lite"
+    )
+
+    EMBEDDING_MODEL: str = (
+        "gemini-embedding-2"
+    )
+
+
+    # ==========================
+    # LLM Reliability
+    # ==========================
+
+    LLM_MAX_RETRIES: int = 3
+
+    LLM_RETRY_DELAY: int = 2
+
+    KEY_COOLDOWN_SECONDS: int = 60
+
+
+    # ==========================
+    # Feature Flags
+    # ==========================
+
+    ENABLE_MEMORY: bool = True
+
+    ENABLE_RAG: bool = True
+
+    ENABLE_MODEL_FALLBACK: bool = True
+
+    ENABLE_KEY_ROTATION: bool = True
+
+
+    TOP_K_RESULTS: int = 5
+
+
+    # ==========================
+    # Scheduler
+    # ==========================
+
+    KEY_ROTATION_STRATEGY: str = (
+        "round_robin"
+    )
+
 
     model_config = SettingsConfigDict(
         env_file=".env",
+        env_file_encoding="utf-8",
         extra="ignore",
     )
 
 
-class AppConfig(BaseModel):
+    def load_providers(self):
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+        if not PROVIDERS_FILE.exists():
+            return {}
 
-    application: ApplicationConfig
+        with open(
+            PROVIDERS_FILE,
+            "r",
+            encoding="utf-8",
+        ) as file:
 
-    providers: ProvidersConfig
-
-
-def _load_provider_config() -> ProvidersConfig:
-
-    config_path = (
-        ROOT_DIR
-        / "backend"
-        / "config"
-        / "api_keys.yaml"
-    )
-
-    if not config_path.exists():
-
-        raise FileNotFoundError(
-            f"{config_path} not found"
-        )
-
-    with open(config_path, encoding="utf-8") as file:
-
-        data = yaml.safe_load(file)
-
-    return ProvidersConfig(**data["providers"])
+            return yaml.safe_load(file)
 
 
-@lru_cache(maxsize=1)
-def get_config() -> AppConfig:
 
-    return AppConfig(
+# IMPORTANT:
+# Singleton used everywhere
 
-        application=ApplicationConfig(),
+settings = Settings()
 
-        providers=_load_provider_config(),
 
-    )
+# Normalize Gemini keys
+
+# Normalize Gemini keys
+
+settings.GEMINI_API_KEYS = [
+    key.strip()
+    for key in settings.GEMINI_API_KEYS.split(",")
+    if key.strip()
+]

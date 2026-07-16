@@ -1,53 +1,63 @@
 """
-Application Dependency Container
+Application dependency container.
 
-Every shared service is created once and injected through this container.
-
-No global singletons.
-
-Python 3.13
+Maintains shared services.
 """
 
-from __future__ import annotations
 
-from typing import Any
+from typing import Optional
+
+from backend.llm import GeminiClient
 
 
 class Container:
 
+
     def __init__(self):
 
-        self._services: dict[str, Any] = {}
+        self._gemini_client: Optional[
+            GeminiClient
+        ] = None
 
-    def register(
-        self,
-        name: str,
-        service: Any,
-    ) -> None:
 
-        if name in self._services:
+
+    def initialize(self):
+
+        """
+        Initialize application services.
+        """
+
+        self._gemini_client = GeminiClient()
+
+
+
+    def shutdown(self):
+
+        """
+        Cleanup resources.
+        """
+
+        self._gemini_client = None
+
+
+
+    @property
+    def gemini(
+        self
+    ) -> GeminiClient:
+
+
+        if self._gemini_client is None:
+
             raise RuntimeError(
-                f"{name} already registered."
+                "Container not initialized"
             )
 
-        self._services[name] = service
 
-    def resolve(self, name: str):
+        return self._gemini_client
 
-        try:
 
-            return self._services[name]
 
-        except KeyError:
+# Global container instance
 
-            raise RuntimeError(
-                f"{name} is not registered."
-            ) from None
-
-    def has(self, name: str) -> bool:
-
-        return name in self._services
-
-    def clear(self):
-
-        self._services.clear()
+container = Container()
