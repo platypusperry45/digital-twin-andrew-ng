@@ -29,7 +29,7 @@ from backend.memory.memory_manager import MemoryManager
 
 from backend.rag.retrieval.retriever import Retriever
 
-from backend.services.prompt_builder import PromptBuilder
+from backend.prompt.prompt_builder import PromptBuilder
 from backend.services.models import (
     ConversationResponse,
 )
