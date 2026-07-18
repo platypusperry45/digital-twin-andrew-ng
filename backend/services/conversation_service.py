@@ -1,24 +1,21 @@
 """
 Conversation Service.
 
-Central orchestrator for all chat requests.
+Coordinates the complete conversation pipeline.
 
-Flow:
+Flow
+----
 User
- ↓
-ConversationService
- ↓
-Memory
- ↓
+    ↓
+Memory Retrieval
+    ↓
+Knowledge Retrieval
+    ↓
 Prompt Builder
- ↓
-RAG
- ↓
+    ↓
 Gemini
- ↓
-Save Memory
- ↓
-Return Response
+    ↓
+Memory Storage
 """
 
 from backend.core.logger import logger
@@ -26,15 +23,32 @@ from backend.core.logger import logger
 from backend.llm.gemini_client import GeminiClient
 from backend.llm.models import (
     LLMRequest,
-    LLMResponse,
+)
+
+from backend.memory.memory_manager import MemoryManager
+
+from backend.rag.retrieval.retriever import Retriever
+
+from backend.services.prompt_builder import PromptBuilder
+from backend.services.models import (
+    ConversationResponse,
 )
 
 
 class ConversationService:
 
-    def __init__(self):
+    def __init__(
+        self,
+        llm: GeminiClient,
+        memory: MemoryManager,
+        retriever: Retriever,
+        prompt_builder: PromptBuilder,
+    ):
 
-        self.llm = GeminiClient()
+        self.llm = llm
+        self.memory = memory
+        self.retriever = retriever
+        self.prompt_builder = prompt_builder
 
         logger.info(
             "Conversation Service initialized."
@@ -42,30 +56,83 @@ class ConversationService:
 
     def chat(
         self,
-        prompt: str,
-        model: str | None = None,
-    ) -> LLMResponse:
+        request: LLMRequest,
+    ) -> ConversationResponse:
 
         logger.info(
-            "New conversation request received."
+            "Conversation started."
         )
 
-        #
-        # Future:
-        # memory
-        # rag
-        # prompt builder
-        #
+        # -----------------------------
+        # Memory
+        # -----------------------------
 
-        request = LLMRequest(
-            prompt=prompt,
-            model=model,
+        memory = self.memory.retrieve_context(
+            request.prompt
         )
 
-        response = self.llm.generate(request)
+        # -----------------------------
+        # Knowledge
+        # -----------------------------
+
+        knowledge = self.retriever.retrieve(
+            request.prompt
+        )
+
+        # -----------------------------
+        # Prompt
+        # -----------------------------
+
+        final_prompt = self.prompt_builder.build(
+            user_prompt=request.prompt,
+            memory=memory,
+            knowledge=knowledge,
+        )
+
+        # -----------------------------
+        # LLM
+        # -----------------------------
+
+        llm_response = self.llm.generate(
+
+            LLMRequest(
+
+                prompt=final_prompt,
+
+                model=request.model,
+
+                temperature=request.temperature,
+
+                metadata=request.metadata,
+
+            )
+
+        )
+
+        # -----------------------------
+        # Store Conversation
+        # -----------------------------
+
+        self.memory.add_conversation(
+
+            user=request.prompt,
+
+            assistant=llm_response.content,
+
+        )
 
         logger.success(
             "Conversation completed."
         )
 
-        return response
+        return ConversationResponse(
+
+            llm=llm_response,
+
+            memory=memory,
+
+            knowledge=knowledge,
+
+            final_prompt=final_prompt,
+
+        )

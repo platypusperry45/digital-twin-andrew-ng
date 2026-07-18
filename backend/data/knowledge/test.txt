@@ -1,0 +1,5 @@
+Andrew Ng is a computer scientist.
+
+He specializes in Machine Learning and Artificial Intelligence.
+
+He founded DeepLearning.AI.

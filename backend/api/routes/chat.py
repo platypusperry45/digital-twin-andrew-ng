@@ -6,50 +6,69 @@ from fastapi import APIRouter, HTTPException
 
 from backend.core.container import container
 
-from backend.llm.models import (
-    LLMRequest,
+from backend.llm.models import LLMRequest
+
+from backend.services.models import (
+    ChatResponse,
+    SourceReference,
 )
 
 
 router = APIRouter(
     prefix="/chat",
-    tags=["Chat"]
+    tags=["Chat"],
 )
 
 
-
-@router.post("")
+@router.post(
+    "",
+    response_model=ChatResponse,
+)
 async def chat(
-    request: LLMRequest
+    request: LLMRequest,
 ):
 
     try:
 
-        response = (
+        conversation = (
             container
-            .gemini
-            .generate(request)
+            .conversation
+            .chat(request)
         )
 
+        sources = []
 
-        return {
+        for result in conversation.knowledge.results:
 
-            "success": True,
+            sources.append(
 
-            "response":
-                response.content,
+                SourceReference(
 
-            "model":
-                response.model_used,
+                    filename=result.filename,
 
-            "latency_ms":
-                response.latency_ms,
+                    source=result.source,
 
-            "timestamp":
-                response.timestamp,
+                    score=result.score,
 
-        }
+                )
 
+            )
+
+        return ChatResponse(
+
+            success=True,
+
+            response=conversation.llm.content,
+
+            model=conversation.llm.model_used,
+
+            latency_ms=conversation.llm.latency_ms,
+
+            timestamp=conversation.llm.timestamp,
+
+            sources=sources,
+
+        )
 
     except Exception as exc:
 
@@ -57,6 +76,6 @@ async def chat(
 
             status_code=500,
 
-            detail=str(exc)
+            detail=str(exc),
 
         )
