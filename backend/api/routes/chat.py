@@ -1,81 +1,56 @@
 """
-Chat API endpoint.
+Chat API.
+
+Thin API layer.
+
+All business logic lives inside
+ConversationService.
 """
 
 from fastapi import APIRouter, HTTPException
 
-from backend.core.container import container
+from backend.core.logger import logger
 
-from backend.llm.models import LLMRequest
+from backend.services.conversation_service import (
+    ConversationService,
+)
 
 from backend.services.models import (
-    ChatResponse,
-    SourceReference,
+    ConversationRequest,
+    ConversationResponse,
 )
 
+router = APIRouter()
 
-router = APIRouter(
-    prefix="/chat",
-    tags=["Chat"],
-)
+service = ConversationService()
 
 
 @router.post(
-    "",
-    response_model=ChatResponse,
+    "/chat",
+    response_model=ConversationResponse,
 )
-async def chat(
-    request: LLMRequest,
-):
+def chat(
+    request: ConversationRequest,
+) -> ConversationResponse:
+    """
+    Chat endpoint.
+    """
+
+    logger.info("Received chat request.")
 
     try:
 
-        conversation = (
-            container
-            .conversation
-            .chat(request)
-        )
-
-        sources = []
-
-        for result in conversation.knowledge.results:
-
-            sources.append(
-
-                SourceReference(
-
-                    filename=result.filename,
-
-                    source=result.source,
-
-                    score=result.score,
-
-                )
-
-            )
-
-        return ChatResponse(
-
-            success=True,
-
-            response=conversation.llm.content,
-
-            model=conversation.llm.model_used,
-
-            latency_ms=conversation.llm.latency_ms,
-
-            timestamp=conversation.llm.timestamp,
-
-            sources=sources,
-
+        return service.chat(
+            request.message,
         )
 
     except Exception as exc:
 
-        raise HTTPException(
-
-            status_code=500,
-
-            detail=str(exc),
-
+        logger.exception(
+            "Chat request failed."
         )
+
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc),
+        ) from exc

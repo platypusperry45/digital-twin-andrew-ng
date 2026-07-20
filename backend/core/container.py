@@ -1,96 +1,112 @@
 """
-Application dependency container.
+Application Dependency Container.
 
-Maintains shared singleton services.
+Creates singleton instances used throughout
+the backend.
+
+Nothing outside this module should instantiate
+large services directly.
 """
 
-from typing import Optional
+from __future__ import annotations
 
-from backend.llm import GeminiClient
+from functools import cached_property
+
+from backend.core.logger import logger
+
+from backend.llm.gemini_client import GeminiClient
 
 from backend.memory.memory_manager import MemoryManager
 
-from backend.rag.pipeline.knowledge_pipeline import KnowledgePipeline
+from backend.personality.manager import PersonalityManager
+
+from backend.prompt.prompt_builder import PromptBuilder
+
+from backend.rag.retrieval.retriever import Retriever
+
+from backend.services.conversation_service import (
+    ConversationService,
+)
 
 
-class Container:
+class ApplicationContainer:
+    """
+    Global dependency container.
 
-    def __init__(self):
+    Every heavyweight object is created once.
+    """
 
-        self._gemini_client: Optional[
-            GeminiClient
-        ] = None
-
-        self._memory_manager: Optional[
-            MemoryManager
-        ] = None
-
-        self._knowledge_pipeline: Optional[
-            KnowledgePipeline
-        ] = None
-
-    def initialize(self):
-        """
-        Initialize all shared services.
-        """
-
-        self._gemini_client = GeminiClient()
-
-        self._memory_manager = MemoryManager()
-
-        self._knowledge_pipeline = KnowledgePipeline()
-
-        self._knowledge_pipeline.initialize()
-
-    def shutdown(self):
-        """
-        Cleanup resources.
-        """
-
-        self._gemini_client = None
-
-        self._memory_manager = None
-
-        self._knowledge_pipeline = None
-
-    @property
-    def gemini(
+    @cached_property
+    def personality(
         self,
-    ) -> GeminiClient:
+    ) -> PersonalityManager:
 
-        if self._gemini_client is None:
+        logger.info(
+            "Initializing PersonalityManager"
+        )
 
-            raise RuntimeError(
-                "Container not initialized"
-            )
+        return PersonalityManager()
 
-        return self._gemini_client
-
-    @property
+    @cached_property
     def memory(
         self,
     ) -> MemoryManager:
 
-        if self._memory_manager is None:
+        logger.info(
+            "Initializing MemoryManager"
+        )
 
-            raise RuntimeError(
-                "Container not initialized"
-            )
+        return MemoryManager()
 
-        return self._memory_manager
-
-    @property
-    def knowledge(
+    @cached_property
+    def retriever(
         self,
-    ) -> KnowledgePipeline:
+    ) -> Retriever:
 
-        if self._knowledge_pipeline is None:
+        logger.info(
+            "Initializing Retriever"
+        )
 
-            raise RuntimeError(
-                "Container not initialized"
-            )
+        return Retriever()
 
-        return self._knowledge_pipeline
+    @cached_property
+    def prompt_builder(
+        self,
+    ) -> PromptBuilder:
+
+        logger.info(
+            "Initializing PromptBuilder"
+        )
+
+        return PromptBuilder()
+
+    @cached_property
+    def llm(
+        self,
+    ) -> GeminiClient:
+
+        logger.info(
+            "Initializing GeminiClient"
+        )
+
+        return GeminiClient()
+
+    @cached_property
+    def conversation_service(
+        self,
+    ) -> ConversationService:
+
+        logger.info(
+            "Initializing ConversationService"
+        )
+
+        return ConversationService(
+            personality=self.personality,
+            memory=self.memory,
+            retriever=self.retriever,
+            prompt_builder=self.prompt_builder,
+            llm=self.llm,
+        )
 
 
-container = Container()
+container = ApplicationContainer()

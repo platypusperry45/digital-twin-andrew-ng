@@ -1,55 +1,27 @@
 """
-Service models.
-
-Models shared by the service layer.
+Conversation service models.
 """
 
-from typing import List
+from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from backend.llm.models import LLMResponse
 
-from backend.memory.models import MemoryContext
+class ConversationRequest(BaseModel):
+    """
+    Incoming chat request.
+    """
 
-from backend.rag.retrieval.retrieval_models import (
-    RetrievalResponse,
-)
+    message: str = Field(
+        ...,
+        min_length=1,
+    )
 
 
 class ConversationResponse(BaseModel):
     """
-    Complete response returned by the
-    Conversation Service.
+    Response returned by ConversationService.
     """
-
-    llm: LLMResponse
-
-    memory: MemoryContext
-
-    knowledge: RetrievalResponse
-
-    final_prompt: str
-
-
-class SourceReference(BaseModel):
-    """
-    One knowledge source used in the response.
-    """
-
-    filename: str
-
-    source: str
-
-    score: float
-
-
-class ChatResponse(BaseModel):
-    """
-    Final API response.
-    """
-
-    success: bool
 
     response: str
 
@@ -57,6 +29,12 @@ class ChatResponse(BaseModel):
 
     latency_ms: float
 
-    timestamp: str
+    prompt_tokens: int = 0
 
-    sources: List[SourceReference] = []
+    completion_tokens: int = 0
+
+    total_tokens: int = 0
+
+    timestamp: datetime = Field(
+        default_factory=datetime.utcnow
+    )

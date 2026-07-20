@@ -1,124 +1,134 @@
 """
 Conversation Service.
 
-Coordinates the complete conversation pipeline.
+Central orchestration layer.
 
-Flow
-----
+Pipeline
+
 User
-    ↓
+ ↓
 Memory Retrieval
-    ↓
+ ↓
 Knowledge Retrieval
-    ↓
+ ↓
+Personality
+ ↓
 Prompt Builder
-    ↓
+ ↓
 Gemini
-    ↓
-Memory Storage
+ ↓
+Store Conversation
+ ↓
+Return Response
 """
+
+from __future__ import annotations
 
 from backend.core.logger import logger
 
 from backend.llm.gemini_client import GeminiClient
-from backend.llm.models import (
-    LLMRequest,
-)
+from backend.llm.models import LLMRequest
 
 from backend.memory.memory_manager import MemoryManager
 
-from backend.rag.retrieval.retriever import Retriever
+from backend.personality.manager import PersonalityManager
 
 from backend.prompt.prompt_builder import PromptBuilder
+
+from backend.rag.retrieval.retriever import Retriever
+
 from backend.services.models import (
+    ConversationRequest,
     ConversationResponse,
 )
 
 
 class ConversationService:
+    """
+    Coordinates every subsystem.
 
-    def __init__(
-        self,
-        llm: GeminiClient,
-        memory: MemoryManager,
-        retriever: Retriever,
-        prompt_builder: PromptBuilder,
-    ):
+    Memory
+        ↓
+    Knowledge
+        ↓
+    Personality
+        ↓
+    Prompt
+        ↓
+    Gemini
+        ↓
+    Save Conversation
+    """
 
-        self.llm = llm
-        self.memory = memory
-        self.retriever = retriever
-        self.prompt_builder = prompt_builder
+    def __init__(self):
 
-        logger.info(
-            "Conversation Service initialized."
-        )
+        self.memory = MemoryManager()
+
+        self.personality = PersonalityManager()
+
+        self.knowledge = Retriever()
+
+        self.prompt_builder = PromptBuilder()
+
+        self.llm = GeminiClient()
 
     def chat(
         self,
-        request: LLMRequest,
+        request: ConversationRequest,
     ) -> ConversationResponse:
 
         logger.info(
-            "Conversation started."
+            "Conversation request received."
         )
 
-        # -----------------------------
-        # Memory
-        # -----------------------------
+        # --------------------------------------------------
+        # Memory Retrieval
+        # --------------------------------------------------
 
         memory = self.memory.retrieve_context(
-            request.prompt
+            request.message
         )
 
-        # -----------------------------
-        # Knowledge
-        # -----------------------------
+        # --------------------------------------------------
+        # Knowledge Retrieval
+        # --------------------------------------------------
 
-        knowledge = self.retriever.retrieve(
-            request.prompt
+        knowledge = self.knowledge.retrieve(
+            request.message
         )
 
-        # -----------------------------
-        # Prompt
-        # -----------------------------
+        # --------------------------------------------------
+        # Personality
+        # --------------------------------------------------
 
-        final_prompt = self.prompt_builder.build(
-            user_prompt=request.prompt,
+        profile = self.personality.get_profile()
+
+        # --------------------------------------------------
+        # Prompt Construction
+        # --------------------------------------------------
+
+        llm_request = self.prompt_builder.build(
+            user_prompt=request.message,
+            personality=profile,
             memory=memory,
             knowledge=knowledge,
         )
 
-        # -----------------------------
-        # LLM
-        # -----------------------------
+        # --------------------------------------------------
+        # Gemini
+        # --------------------------------------------------
 
         llm_response = self.llm.generate(
-
-            LLMRequest(
-
-                prompt=final_prompt,
-
-                model=request.model,
-
-                temperature=request.temperature,
-
-                metadata=request.metadata,
-
-            )
-
+            llm_request
         )
 
-        # -----------------------------
-        # Store Conversation
-        # -----------------------------
+        # --------------------------------------------------
+        # Save Memory
+        # --------------------------------------------------
 
         self.memory.add_conversation(
-
-            user=request.prompt,
-
-            assistant=llm_response.content,
-
+            user=request.message,
+            assistant=llm_response.text,
         )
 
         logger.success(
@@ -126,13 +136,10 @@ class ConversationService:
         )
 
         return ConversationResponse(
-
-            llm=llm_response,
-
-            memory=memory,
-
-            knowledge=knowledge,
-
-            final_prompt=final_prompt,
-
+            response=llm_response.text,
+            model=llm_response.model_used,
+            latency_ms=llm_response.latency_ms,
+            prompt_tokens=llm_response.usage.prompt_tokens,
+            completion_tokens=llm_response.usage.completion_tokens,
+            total_tokens=llm_response.usage.total_tokens,
         )

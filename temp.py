@@ -1,23 +1,18 @@
-from backend.rag import Retriever
+from backend.llm.gemini_client import GeminiClient
+from backend.llm.models import LLMRequest
 
-retriever = Retriever()
 
-response = retriever.retrieve(
-    "Who is Andrew Ng?"
+client = GeminiClient()
+
+
+request = LLMRequest(
+    user_prompt="Explain neural networks in one sentence"
 )
 
-print()
 
-print(response)
+response = client.generate(request)
 
-print()
 
-for item in response.results:
-
-    print("=" * 60)
-
-    print(item.score)
-
-    print(item.text)
-
-    print(item.filename)
+print(response.text)
+print(response.model_used)
+print(response.latency_ms)

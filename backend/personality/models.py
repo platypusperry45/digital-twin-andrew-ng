@@ -1,104 +1,105 @@
 """
-Personality models.
+Personality Models.
 
-Defines the complete personality profile used
-by the Prompt Builder.
+Shared models used by every personality extraction module.
 """
 
-from typing import List
+from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
 
-class TeachingStyle(BaseModel):
-    """
-    How the person teaches.
-    """
+class VocabularyProfile(BaseModel):
 
-    explanation_order: List[str] = Field(default_factory=list)
+    common_words: list[str] = Field(default_factory=list)
 
-    prefers_intuition: bool = True
+    transition_words: list[str] = Field(default_factory=list)
 
-    uses_math_after_intuition: bool = True
+    technical_terms: list[str] = Field(default_factory=list)
 
-    encourages_learning: bool = True
-
-    asks_reflective_questions: bool = False
-
-    uses_step_by_step: bool = True
+    favorite_verbs: list[str] = Field(default_factory=list)
 
 
-class SpeakingStyle(BaseModel):
-    """
-    Speaking characteristics.
-    """
+class PhraseProfile(BaseModel):
 
-    tone: str
+    introductions: list[str] = Field(default_factory=list)
 
-    sentence_style: str
+    transitions: list[str] = Field(default_factory=list)
 
-    vocabulary: str
+    explanations: list[str] = Field(default_factory=list)
 
-    pacing: str
+    summaries: list[str] = Field(default_factory=list)
 
-    enthusiasm: str
+    encouragements: list[str] = Field(default_factory=list)
 
 
-class HumorStyle(BaseModel):
-    """
-    Humor characteristics.
-    """
+class AnalogyProfile(BaseModel):
 
-    uses_humor: bool
-
-    humor_style: str
-
-    sarcasm: bool
+    analogies: list[str] = Field(default_factory=list)
 
 
-class PersonalityTraits(BaseModel):
-    """
-    General personality.
-    """
+class HumorProfile(BaseModel):
 
-    traits: List[str] = Field(default_factory=list)
+    examples: list[str] = Field(default_factory=list)
+
+    humor_density: float = 0.0
 
 
-class ResponseRules(BaseModel):
-    """
-    Hard rules that should always be followed.
-    """
+class TeachingProfile(BaseModel):
 
-    always_do: List[str] = Field(default_factory=list)
+    explanation_order: list[str] = Field(default_factory=list)
 
-    never_do: List[str] = Field(default_factory=list)
+    example_frequency: float = 0.0
 
+    intuition_before_math: bool = True
+
+    question_frequency: float = 0.0
+
+
+class StyleProfile(BaseModel):
+
+    tone: str = ""
+
+    verbosity: str = ""
+
+    confidence: str = ""
+
+    reading_level: str = ""
+
+    encouragement_level: float = 0.0
+
+class ResponseStructureProfile(BaseModel):
+
+    sections: list[str] = Field(
+        default_factory=list
+    )
 
 class PersonalityProfile(BaseModel):
-    """
-    Complete personality profile.
-    """
 
-    name: str
+    vocabulary: VocabularyProfile = Field(
+        default_factory=VocabularyProfile
+    )
 
-    role: str
+    phrases: PhraseProfile = Field(
+        default_factory=PhraseProfile
+    )
 
-    biography: str
+    analogies: AnalogyProfile = Field(
+        default_factory=AnalogyProfile
+    )
 
-    mission: str
+    humor: HumorProfile = Field(
+        default_factory=HumorProfile
+    )
 
-    teaching: TeachingStyle
+    teaching: TeachingProfile = Field(
+        default_factory=TeachingProfile
+    )
 
-    speaking: SpeakingStyle
+    style: StyleProfile = Field(
+        default_factory=StyleProfile
+    )
 
-    humor: HumorStyle
-
-    personality: PersonalityTraits
-
-    rules: ResponseRules
-
-    favorite_phrases: List[str] = Field(default_factory=list)
-
-    favorite_examples: List[str] = Field(default_factory=list)
-
-    preferred_analogies: List[str] = Field(default_factory=list)
+    response_structure: ResponseStructureProfile = Field(
+        default_factory=ResponseStructureProfile
+    )

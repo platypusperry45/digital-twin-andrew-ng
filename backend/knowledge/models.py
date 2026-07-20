@@ -1,19 +1,24 @@
 """
-Dataset models.
+Knowledge corpus models.
 
-Defines all resources used by the Digital Twin.
+Defines all models used by the knowledge ingestion pipeline.
 """
 
 from datetime import datetime
-from typing import Dict, List, Optional
+from pathlib import Path
+from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
 
-class DatasetResource(BaseModel):
+class CorpusDocument(BaseModel):
     """
-    One Andrew Ng resource.
+    Represents one document inside the knowledge corpus.
     """
+
+    # ----------------------------
+    # Identity
+    # ----------------------------
 
     id: str
 
@@ -21,38 +26,84 @@ class DatasetResource(BaseModel):
 
     author: str = "Andrew Ng"
 
+    # ----------------------------
+    # File Information
+    # ----------------------------
+
+    path: Path
+
     source: str
-
-    local_path: str
-
-    resource_type: str
 
     category: str
 
-    tags: List[str] = Field(default_factory=list)
+    extension: str
+
+    checksum: str
 
     language: str = "en"
 
-    published_year: Optional[int] = None
+    tags: List[str] = Field(default_factory=list)
 
-    description: Optional[str] = None
-
-    metadata: Dict = Field(default_factory=dict)
+    # ----------------------------
+    # Knowledge Pipeline
+    # ----------------------------
 
     indexed: bool = False
 
+    embedding_model: Optional[str] = None
+
+    chunk_count: int = 0
+
+    vector_count: int = 0
+
+    last_indexed: Optional[datetime] = None
+
+    # ----------------------------
+    # Personality Pipeline
+    # ----------------------------
+
     personality_processed: bool = False
+
+    last_personality_update: Optional[datetime] = None
+
+    # ----------------------------
+    # Metadata
+    # ----------------------------
 
     created_at: datetime = Field(
         default_factory=datetime.utcnow
     )
 
-
-class DatasetRegistry(BaseModel):
-    """
-    Registry of all imported resources.
-    """
-
-    resources: List[DatasetResource] = Field(
-        default_factory=list
+    updated_at: datetime = Field(
+        default_factory=datetime.utcnow
     )
+
+
+class CorpusRegistry(BaseModel):
+    """
+    Registry of every imported document.
+    """
+
+    documents: List[
+        CorpusDocument
+    ] = Field(default_factory=list)
+
+
+class CorpusStats(BaseModel):
+    """
+    Overall corpus statistics.
+    """
+
+    total_documents: int = 0
+
+    indexed_documents: int = 0
+
+    personality_documents: int = 0
+
+    total_chunks: int = 0
+
+    total_vectors: int = 0
+
+    total_size_mb: float = 0.0
+
+    last_updated: Optional[datetime] = None

@@ -1,5 +1,5 @@
 """
-Application lifecycle management.
+Application lifecycle.
 """
 
 from contextlib import asynccontextmanager
@@ -9,59 +9,35 @@ from fastapi import FastAPI
 from backend.core.container import container
 from backend.core.logger import logger
 
+from backend.knowledge.corpus_manager import CorpusManager
+from backend.knowledge.synchronizer import (
+    KnowledgeSynchronizer,
+)
+
 
 @asynccontextmanager
 async def lifespan(
     app: FastAPI,
 ):
-    """
-    Startup and shutdown lifecycle.
-    """
 
     logger.info(
-        "=" * 70
+        "Starting Digital Twin Backend"
     )
 
-    logger.info(
-        "Starting Digital Twin Backend..."
+    container.initialize()
+
+    CorpusManager().initialize()
+
+    KnowledgeSynchronizer().synchronize()
+
+    logger.success(
+        "Backend initialized."
     )
-
-    try:
-
-        container.initialize()
-
-        logger.success(
-            "All services initialized successfully."
-        )
-
-    except Exception as exc:
-
-        logger.exception(
-            f"Startup failed: {exc}"
-        )
-
-        raise
 
     yield
 
     logger.info(
-        "Shutting down services..."
+        "Shutting down backend."
     )
 
-    try:
-
-        container.shutdown()
-
-        logger.success(
-            "Shutdown completed."
-        )
-
-    except Exception as exc:
-
-        logger.exception(
-            f"Shutdown error: {exc}"
-        )
-
-    logger.info(
-        "=" * 70
-    )
+    container.shutdown()

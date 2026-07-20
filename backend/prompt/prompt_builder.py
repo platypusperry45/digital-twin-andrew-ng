@@ -1,99 +1,287 @@
 """
 Prompt Builder.
 
-Combines:
+Responsible for assembling the complete prompt
+used by the Gemini client.
 
-- System Prompt
-- Retrieved Memory
-- Retrieved Knowledge
-- Current User Prompt
+Sources:
+
+- Personality
+- Memory
+- Knowledge Retrieval
+- User Prompt
+
+Output:
+
+LLMRequest
 """
 
-from backend.memory.models import MemoryContext
-from backend.rag.retrieval.retrieval_models import RetrievalResponse
+from __future__ import annotations
+
+from backend.llm.models import (
+    GenerationConfig,
+    LLMRequest,
+)
+
+from backend.memory.models import (
+    MemoryContext,
+)
+
+from backend.personality.models import (
+    PersonalityProfile,
+)
+
+from backend.rag.retrieval.retrieval_models import (
+    RetrievalResponse,
+)
 
 
 class PromptBuilder:
+    """
+    Builds production-ready prompts.
+
+    The builder separates:
+
+    - System Prompt
+    - User Prompt
+
+    instead of producing one massive prompt.
+
+    This allows GeminiClient to use
+    native conversation handling.
+    """
 
     def build(
         self,
-        user_prompt: str,
+        *,
+        profile: PersonalityProfile,
         memory: MemoryContext,
-        knowledge: RetrievalResponse | None = None,
-    ) -> str:
+        knowledge: RetrievalResponse | None,
+        user_prompt: str,
+        temperature: float = 0.7,
+    ) -> LLMRequest:
+        """
+        Build a complete LLMRequest.
 
-        prompt = []
+        Parameters
+        ----------
+        profile
+            Andrew Ng personality profile.
 
-        prompt.append(
-            """
-You are a digital twin of Andrew Ng.
+        memory
+            Retrieved memory context.
 
-You answer exactly as Andrew Ng would.
+        knowledge
+            Retrieved RAG documents.
 
-Use the supplied memory and knowledge whenever relevant.
+        user_prompt
+            User question.
 
-If knowledge contradicts memory,
-prefer knowledge.
+        temperature
+            Generation temperature.
+        """
 
-Never mention that you are an AI model.
-""".strip()
+        system_prompt = self._build_system_prompt(
+            profile=profile,
         )
 
-        # ----------------------
-        # Long-term memory
-        # ----------------------
+        final_user_prompt = self._build_user_prompt(
+            user_prompt=user_prompt,
+            memory=memory,
+            knowledge=knowledge,
+        )
+
+        return LLMRequest(
+
+            system_prompt=system_prompt,
+
+            user_prompt=final_user_prompt,
+
+            config=GenerationConfig(
+                temperature=temperature,
+            ),
+
+        )
+
+    # =====================================================
+    # System Prompt
+    # =====================================================
+
+    def _build_system_prompt(
+        self,
+        profile: PersonalityProfile,
+    ) -> str:
+
+        prompt: list[str] = []
+
+        prompt.append(
+            "You are the digital twin of Andrew Ng."
+        )
+
+        prompt.append(
+            "Respond exactly as Andrew Ng would."
+        )
+
+        prompt.append(
+            "Your answers must reflect Andrew Ng's "
+            "teaching style, communication patterns, "
+            "reasoning process, values and personality."
+        )
+
+        prompt.append(
+            "Never mention that you are an AI model."
+        )
+
+        prompt.append(
+            "Never invent facts."
+        )
+
+        prompt.append(
+            "If the supplied knowledge is insufficient, "
+            "state uncertainty honestly."
+        )
+
+        # -------------------------------------------------
+        # Personality
+        # -------------------------------------------------
+
+        prompt.append("\n===== Personality =====")
+
+        if profile.summary:
+
+            prompt.append(profile.summary)
+
+        if profile.communication_style:
+
+            prompt.append(
+                "\nCommunication Style:"
+            )
+
+            prompt.append(
+                profile.communication_style
+            )
+
+        if profile.teaching_style:
+
+            prompt.append(
+                "\nTeaching Style:"
+            )
+
+            prompt.append(
+                profile.teaching_style
+            )
+
+        if profile.thinking_style:
+
+            prompt.append(
+                "\nThinking Style:"
+            )
+
+            prompt.append(
+                profile.thinking_style
+            )
+
+        if profile.values:
+
+            prompt.append(
+                "\nCore Values:"
+            )
+
+            for value in profile.values:
+
+                prompt.append(
+                    f"- {value}"
+                )
+
+        if profile.catchphrases:
+
+            prompt.append(
+                "\nFrequently Used Expressions:"
+            )
+
+            for phrase in profile.catchphrases:
+
+                prompt.append(
+                    f"- {phrase}"
+                )
+
+        return "\n".join(prompt)
+
+    # =====================================================
+    # User Prompt
+    # =====================================================
+
+    def _build_user_prompt(
+        self,
+        *,
+        user_prompt: str,
+        memory: MemoryContext,
+        knowledge: RetrievalResponse | None,
+    ) -> str:
+
+        sections: list[str] = []
+
+        # -------------------------------------------------
+        # Memory
+        # -------------------------------------------------
 
         if memory.long_term:
 
-            prompt.append("\n### Long-Term Memory")
+            sections.append(
+                "### Relevant Long-Term Memory"
+            )
 
             for item in memory.long_term:
 
-                prompt.append(
+                sections.append(
                     f"- {item.memory.content}"
                 )
 
-        # ----------------------
-        # Recent conversation
-        # ----------------------
-
         if memory.short_term:
 
-            prompt.append("\n### Recent Conversation")
+            sections.append(
+                "\n### Recent Conversation"
+            )
 
             for turn in memory.short_term:
 
-                prompt.append(
+                sections.append(
                     f"User: {turn.user}"
                 )
 
-                prompt.append(
+                sections.append(
                     f"Assistant: {turn.assistant}"
                 )
 
-        # ----------------------
+        # -------------------------------------------------
         # Knowledge
-        # ----------------------
+        # -------------------------------------------------
 
         if (
             knowledge is not None
             and knowledge.results
         ):
 
-            prompt.append("\n### Knowledge Base")
+            sections.append(
+                "\n### Retrieved Knowledge"
+            )
 
             for result in knowledge.results:
 
-                prompt.append(result.text)
+                sections.append(result.text)
 
-        # ----------------------
-        # Current question
-        # ----------------------
+        # -------------------------------------------------
+        # Current User Query
+        # -------------------------------------------------
 
-        prompt.append("\n### User")
+        sections.append(
+            "\n### User Question"
+        )
 
-        prompt.append(user_prompt)
+        sections.append(user_prompt)
 
-        prompt.append("\n### Assistant")
+        sections.append(
+            "\n### Assistant"
+        )
 
-        return "\n".join(prompt)
+        return "\n".join(sections)
