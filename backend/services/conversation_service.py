@@ -1,233 +1,133 @@
 """
-Conversation Service.
+Conversation Service for Digital Twin of Andrew Ng.
 
-Central orchestration layer.
-
-Pipeline
-
-User
- ↓
-Memory Retrieval
- ↓
-Knowledge Retrieval
- ↓
-Personality
- ↓
-Prompt Builder
- ↓
-Gemini
- ↓
-Store Conversation
- ↓
-Return Response
+Orchestrates multi-turn dialogs by blending:
+- Personality injection
+- Short-term & Long-term Memory recall
+- RAG groundings retrieval
+- Dynamic Prompt Building
+- Gemini 2.5 Flash execution
 """
 
 from __future__ import annotations
 
 import time
+from typing import Any, Dict, List, Optional
 
 from backend.core.logger import logger
-
-from backend.llm.exceptions import (
-    LLMException,
-    SafetyBlockedError,
-    RateLimitError,
-    ModelUnavailableError,
-)
-
 from backend.llm.gemini_client import GeminiClient
+from backend.llm.models import ChatMessage, LLMRequest
 from backend.memory.memory_manager import MemoryManager
 from backend.personality.manager import PersonalityManager
 from backend.prompt.prompt_builder import PromptBuilder
 from backend.rag.retrieval.retriever import Retriever
-
-from backend.services.models import (
-    ConversationRequest,
-    ConversationResponse,
-)
+from backend.services.models import ChatResponse
+from backend.services.session_manager import SessionManager
 
 
 class ConversationService:
     """
-    Coordinates every backend subsystem.
-
-    This class contains orchestration logic only.
+    Main orchestration engine managing end-to-end conversation flows.
     """
 
     def __init__(
         self,
-        *,
         personality: PersonalityManager,
         memory: MemoryManager,
         retriever: Retriever,
         prompt_builder: PromptBuilder,
         llm: GeminiClient,
+        sessions: Optional[SessionManager] = None,
+        session_manager: Optional[SessionManager] = None,
     ) -> None:
-
         self.personality = personality
         self.memory = memory
         self.retriever = retriever
         self.prompt_builder = prompt_builder
         self.llm = llm
-
-        logger.info(
-            "ConversationService initialized."
-        )
-
-    # ==========================================================
-    # Chat
-    # ==========================================================
+        self.sessions = sessions or session_manager or SessionManager()
+        logger.info("ConversationService initialized successfully.")
 
     def chat(
         self,
-        request: ConversationRequest,
-    ) -> ConversationResponse:
+        session_id: str,
+        message: str,
+        user_id: str = "default_user",
+    ) -> ChatResponse:
+        """
+        Executes a single turn in a multi-turn conversation session.
+        """
+        start_time = time.time()
+        logger.info(f"Processing chat message for session='{session_id}'...")
 
-        logger.info(
-            "Conversation request received."
+        # 1. Fetch or create session state
+        chat_session = self.sessions.get_or_create(session_id)
+
+        # 2. Retrieve RAG Knowledge Context
+        rag_context_docs: List[str] = []
+        try:
+            rag_results = self.retriever.retrieve(query=message, top_k=3)
+            if hasattr(rag_results, "documents"):
+                rag_context_docs = [str(doc) for doc in rag_results.documents]
+            elif isinstance(rag_results, list):
+                rag_context_docs = [str(doc) for doc in rag_results]
+        except Exception as e:
+            logger.warning(f"RAG retrieval skipped or encountered error: {e}")
+
+        # 3. Retrieve Long-Term & Short-Term Memory Context
+        memory_context = ""
+        try:
+            if hasattr(self.memory, "get_context"):
+                memory_context = self.memory.get_context(session_id=session_id, query=message)
+        except Exception as e:
+            logger.warning(f"Memory context lookup skipped: {e}")
+
+        # 4. Construct Prompt
+        history = chat_session.get_history()
+        system_prompt = self.prompt_builder.build_system_prompt(
+            personality=self.personality.get_profile(),
+            rag_context=rag_context_docs,
+            memory_context=memory_context,
         )
 
-        started = time.time()
+        messages_sequence = [
+            ChatMessage(role=msg.get("role", "user"), content=msg.get("content", ""))
+            for msg in history
+        ]
+
+        # 5. Call LLM Engine (Gemini 2.5 Flash)
+        llm_request = LLMRequest(
+            user_prompt=message,
+            system_prompt=system_prompt,
+            messages=messages_sequence,
+        )
+
+        llm_response = self.llm.generate(llm_request)
+
+        # 6. Update Session History & Memory
+        chat_session.add_user_message(message)
+        chat_session.add_assistant_message(llm_response.text)
 
         try:
+            if hasattr(self.memory, "add_conversation"):
+                short_term_ref = getattr(chat_session, "short_term", None)
+                if short_term_ref:
+                    self.memory.add_conversation(
+                        short_term=short_term_ref,
+                        user=message,
+                        assistant=llm_response.text,
+                    )
+            elif hasattr(self.memory, "save_turn"):
+                self.memory.save_turn(session_id=session_id, user_msg=message, assistant_msg=llm_response.text)
+        except Exception as e:
+            logger.warning(f"Failed saving memory turn: {e}")
 
-            # --------------------------------------------------
-            # Memory
-            # --------------------------------------------------
+        latency_ms = (time.time() - start_time) * 1000
 
-            memory_context = (
-                self.memory.retrieve_context(
-                    request.message
-                )
-            )
-
-            # --------------------------------------------------
-            # Knowledge
-            # --------------------------------------------------
-
-            knowledge_context = (
-                self.retriever.retrieve(
-                    request.message
-                )
-            )
-
-            # --------------------------------------------------
-            # Personality
-            # --------------------------------------------------
-
-            profile = (
-                self.personality.get_profile()
-            )
-
-            # --------------------------------------------------
-            # Prompt
-            # --------------------------------------------------
-
-            llm_request = (
-                self.prompt_builder.build(
-                    profile=profile,
-                    memory=memory_context,
-                    knowledge=knowledge_context,
-                    user_prompt=request.message,
-                )
-            )
-
-            # --------------------------------------------------
-            # Generate
-            # --------------------------------------------------
-
-            llm_response = (
-                self.llm.generate(
-                    llm_request
-                )
-            )
-
-            # --------------------------------------------------
-            # Persist Conversation
-            # --------------------------------------------------
-
-            self.memory.add_conversation(
-                user=request.message,
-                assistant=llm_response.text,
-            )
-
-            elapsed = (
-                time.time() - started
-            ) * 1000
-
-            logger.success(
-                f"Conversation completed "
-                f"in {elapsed:.2f} ms."
-            )
-
-            return ConversationResponse(
-
-                response=llm_response.text,
-
-                model=llm_response.model_used,
-
-                latency_ms=llm_response.latency_ms,
-
-                prompt_tokens=llm_response.usage.prompt_tokens,
-
-                completion_tokens=llm_response.usage.completion_tokens,
-
-                total_tokens=llm_response.usage.total_tokens,
-
-            )
-
-        except SafetyBlockedError:
-
-            logger.warning(
-                "Conversation blocked by Gemini safety."
-            )
-
-            raise
-
-        except RateLimitError:
-
-            logger.warning(
-                "Rate limit reached."
-            )
-
-            raise
-
-        except ModelUnavailableError:
-
-            logger.error(
-                "No Gemini model available."
-            )
-
-            raise
-
-        except LLMException:
-
-            logger.exception(
-                "LLM pipeline failed."
-            )
-
-            raise
-
-        except Exception:
-
-            logger.exception(
-                "Conversation pipeline crashed."
-            )
-
-            raise
-
-    # ==========================================================
-    # Health
-    # ==========================================================
-
-    def health(self) -> dict:
-
-        return {
-
-            "memory": self.memory.stats(),
-
-            "retriever": self.retriever.store.stats(),
-
-            "llm": self.llm.health(),
-
-        }
+        return ChatResponse(
+            session_id=session_id,
+            response_text=llm_response.text,
+            sources=rag_context_docs,
+            latency_ms=latency_ms,
+            model_used=llm_response.model_used,
+        )

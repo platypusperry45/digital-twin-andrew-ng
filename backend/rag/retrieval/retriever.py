@@ -1,97 +1,57 @@
 """
-Knowledge Retriever.
-
-Flow:
-
-Question
-    ↓
-Embedding
-    ↓
-Vector Search
-    ↓
-Relevant Chunks
+Knowledge Retriever for Digital Twin RAG Pipeline.
 """
 
-from backend.core.config import settings
+from typing import List, Any, Dict, Optional
 from backend.core.logger import logger
-
-from backend.rag.embeddings import EmbeddingEngine
-from backend.rag.retrieval.retrieval_models import (
-    RetrievalResult,
-    RetrievalResponse,
-)
-from backend.rag.vectorstore import ChromaStore
 
 
 class Retriever:
+    """Retrieves relevant knowledge base passages for prompt grounding."""
 
-    def __init__(self):
+    def __init__(self, vectorstore: Any, embedding_engine: Any) -> None:
+        self.vectorstore = vectorstore
+        self.embedding_engine = embedding_engine
+        logger.info("Knowledge Retriever initialized.")
 
-        self.embedding = EmbeddingEngine()
+    def retrieve(self, query: str, top_k: int = 3) -> List[str]:
+        """
+        Embeds query and searches ChromaStore, returning plain document text strings.
+        """
+        logger.info(f"Searching knowledge base for query: '{query}'")
+        
+        try:
+            query_vector = self.embedding_engine.embed_query(query)
+            if not query_vector:
+                logger.warning("Query embedding returned empty vector.")
+                return []
 
-        self.store = ChromaStore()
-
-        logger.info(
-            "Knowledge Retriever initialized."
-        )
-
-    def retrieve(
-        self,
-        query: str,
-        top_k: int | None = None,
-        min_score: float = 0.60,
-    ) -> RetrievalResponse:
-
-        if top_k is None:
-
-            top_k = settings.TOP_K_RESULTS
-
-        logger.info(
-            f"Searching knowledge base: {query}"
-        )
-
-        query_embedding = (
-            self.embedding.embed_query(
-                query
-            )
-        )
-
-        matches = self.store.search(
-            embedding=query_embedding,
-            top_k=top_k,
-        )
-
-        results = []
-
-        for item in matches:
-
-            if item.score < min_score:
-                continue
-
-            results.append(
-
-                RetrievalResult(
-
-                    text=item.text,
-
-                    score=item.score,
-
-                    source=item.source,
-
-                    filename=item.filename,
-
-                )
-
+            raw_results = self.vectorstore.search(
+                query_embedding=query_vector,
+                top_k=top_k,
             )
 
-        logger.success(
-            f"Retrieved {len(results)} documents."
-        )
+            documents: List[str] = []
 
-        return RetrievalResponse(
+            if isinstance(raw_results, dict) and "documents" in raw_results:
+                docs = raw_results.get("documents", [])
+                if docs and isinstance(docs, list):
+                    first_elem = docs[0]
+                    if isinstance(first_elem, list):
+                        documents = [str(doc) for doc in first_elem if doc]
+                    else:
+                        documents = [str(doc) for doc in docs if doc]
+            elif isinstance(raw_results, list):
+                for item in raw_results:
+                    if isinstance(item, str):
+                        documents.append(item)
+                    elif hasattr(item, "page_content"):
+                        documents.append(str(item.page_content))
+                    elif hasattr(item, "document"):
+                        documents.append(str(item.document))
 
-            query=query,
+            return documents[:top_k]
 
-            results=results,
-
-        )
+        except Exception as e:
+            logger.warning(f"RAG retrieval encountered an error (continuing without RAG context): {e}")
+            return []

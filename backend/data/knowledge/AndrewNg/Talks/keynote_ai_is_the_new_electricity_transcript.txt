@@ -1,0 +1,3 @@
+Keynote Address: AI is the New Electricity
+Transcript snippet from Andrew Ng's address:
+Just as electricity transformed every industry a hundred years ago, AI will transform every sector today. In manufacturing, computer vision with Landing AI inspects circuit boards and solar panels faster than humanly possible. In healthcare, deep neural networks analyze X-rays to detect pneumonia. The key to making AI work in small-data domains is moving from model-centric AI to data-centric AI.

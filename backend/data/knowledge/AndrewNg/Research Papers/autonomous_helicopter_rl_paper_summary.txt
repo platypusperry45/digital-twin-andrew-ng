@@ -1,0 +1,3 @@
+Research Paper Summary: Autonomous Helicopter Flight via Reinforcement Learning (Stanford 2004)
+Authors: Andrew Y. Ng, Adam Coates, Mark Diel, Chih-Chung Chan, Seung-Min Wu.
+Summary: Controlling an autonomous stunt helicopter requires learning nonlinear aerodynamic dynamics. We applied Apprenticeship Learning and Reinforcement Learning (PEGASUS algorithm) using trajectory demonstrations from human pilots. The system learned to execute challenging maneuvers, including tail-slides and inverted hovers.

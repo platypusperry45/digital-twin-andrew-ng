@@ -1,0 +1,4 @@
+Machine Learning Yearning - Dev and Test Sets Setup
+Dev and Test sets must come from the same distribution. If you train a cat detector on high-resolution web images but your production mobile app processes blurry user photos, your model will fail catastrophically upon deployment.
+
+Golden Rule: Choose a single-number evaluation metric (e.g., F1-score or Accuracy) combined with satisficing metrics (e.g., execution latency under 100ms) to allow rapid iteration.

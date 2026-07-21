@@ -1,179 +1,45 @@
 """
-Chat API Routes.
+Chat Endpoint for Digital Twin API.
 
-Exposes the conversation service through FastAPI.
+Provides POST route for conversational turns and GET route for browser status inspection.
 """
 
-from __future__ import annotations
-
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import StreamingResponse
-
 from backend.core.container import container
-from backend.core.logger import logger
+from backend.services.models import ChatRequest, ChatResponse
 
-from backend.llm.exceptions import (
-    LLMException,
-    SafetyBlockedError,
-    RateLimitError,
-    ModelUnavailableError,
-)
-
-from backend.services.models import (
-    ConversationRequest,
-    ConversationResponse,
-)
-
-router = APIRouter(
-    prefix="/chat",
-    tags=["Chat"],
-)
+router = APIRouter(prefix="/chat", tags=["Chat"])
 
 
-# ==========================================================
-# Chat
-# ==========================================================
+@router.get("")
+def chat_info():
+    """
+    GET handler providing endpoint usage instructions when accessed via browser URL bar.
+    """
+    return {
+        "status": "online",
+        "endpoint": "/api/chat",
+        "method": "POST",
+        "message": "Send a POST request with JSON body to chat with the Andrew Ng Digital Twin.",
+        "sample_payload": {
+            "session_id": "demo_session_123",
+            "message": "Hi Andrew! Tell me about machine learning.",
+            "user_id": "default_user"
+        }
+    }
 
-@router.post(
-    "",
-    response_model=ConversationResponse,
-)
-def chat(
-    request: ConversationRequest,
-) -> ConversationResponse:
 
+@router.post("", response_model=ChatResponse)
+def chat(request: ChatRequest) -> ChatResponse:
+    """
+    Executes a single multi-turn chat interaction with the Andrew Ng Digital Twin.
+    """
     try:
-
-        return (
-            container
-            .conversation_service
-            .chat(request)
+        response = container.conversation_service.chat(
+            session_id=request.session_id,
+            message=request.message,
+            user_id=request.user_id or "default_user",
         )
-
-    except SafetyBlockedError as exc:
-
-        raise HTTPException(
-            status_code=400,
-            detail=str(exc),
-        )
-
-    except RateLimitError as exc:
-
-        raise HTTPException(
-            status_code=429,
-            detail=str(exc),
-        )
-
-    except ModelUnavailableError as exc:
-
-        raise HTTPException(
-            status_code=503,
-            detail=str(exc),
-        )
-
-    except LLMException as exc:
-
-        raise HTTPException(
-            status_code=500,
-            detail=str(exc),
-        )
-
-    except Exception:
-
-        logger.exception(
-            "Unexpected server error."
-        )
-
-        raise HTTPException(
-            status_code=500,
-            detail="Internal Server Error",
-        )
-
-
-# ==========================================================
-# Streaming Chat
-# ==========================================================
-
-@router.post(
-    "/stream",
-)
-def stream(
-    request: ConversationRequest,
-):
-
-    service = container.conversation_service
-
-    try:
-
-        memory = service.memory.retrieve_context(
-            request.message
-        )
-
-        knowledge = service.retriever.retrieve(
-            request.message
-        )
-
-        profile = service.personality.get_profile()
-
-        llm_request = (
-            service.prompt_builder.build(
-                profile=profile,
-                memory=memory,
-                knowledge=knowledge,
-                user_prompt=request.message,
-            )
-        )
-
-        return StreamingResponse(
-
-            service.llm.stream(
-                llm_request
-            ),
-
-            media_type="text/plain",
-
-        )
-
-    except Exception:
-
-        logger.exception(
-            "Streaming request failed."
-        )
-
-        raise HTTPException(
-            status_code=500,
-            detail="Streaming failed.",
-        )
-
-
-# ==========================================================
-# LLM Health
-# ==========================================================
-
-@router.get(
-    "/llm/health",
-)
-def llm_health():
-
-    return (
-        container
-        .conversation_service
-        .llm
-        .health()
-    )
-
-
-# ==========================================================
-# Backend Health
-# ==========================================================
-
-@router.get(
-    "/health",
-)
-def backend_health():
-
-    return (
-        container
-        .conversation_service
-        .health()
-    )
+        return response
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

@@ -1,150 +1,49 @@
 """
-Andrew Ng Digital Twin Backend.
+Main FastAPI Application Entrypoint for Digital Twin of Andrew Ng.
 
-Application entrypoint.
+Configures application lifecycle, CORS middleware, and central API routers.
 """
 
-from __future__ import annotations
-
-from contextlib import asynccontextmanager
-
-from fastapi import FastAPI
+from fastapi import FastAPI, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.core.container import container
-from backend.core.config import settings
-from backend.core.logger import logger
-
+from backend.core.lifecycle import lifespan
 from backend.api.routes.chat import router as chat_router
+from backend.api.routes.memory_dashboard import router as memory_dashboard_router
 
-
-# ==========================================================
-# Lifespan
-# ==========================================================
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-
-    logger.info(
-        "Starting Andrew Ng Backend..."
-    )
-
-    container.initialize()
-
-    logger.success(
-        "Application startup complete."
-    )
-
-    yield
-
-    logger.info(
-        "Stopping Andrew Ng Backend..."
-    )
-
-    container.shutdown()
-
-    logger.success(
-        "Application shutdown complete."
-    )
-
-
-# ==========================================================
-# FastAPI
-# ==========================================================
-
-
+# Instantiate main FastAPI application with lifecycle context
 app = FastAPI(
-
-    title="Andrew Ng Digital Twin",
-
-    description="Production AI backend",
-
+    title="Digital Twin of Andrew Ng API",
+    description="Backend API supporting RAG, Memory, Persona Engine, and Visualization for Andrew Ng Digital Twin.",
     version="1.0.0",
-
     lifespan=lifespan,
-
 )
 
-
-# ==========================================================
-# Middleware
-# ==========================================================
-
-
+# Enable CORS for frontend and client integrations
 app.add_middleware(
-
     CORSMiddleware,
-
-    allow_origins=getattr(
-        settings,
-        "CORS_ORIGINS",
-        ["*"],
-    ),
-
+    allow_origins=["*"],
     allow_credentials=True,
-
     allow_methods=["*"],
-
     allow_headers=["*"],
-
 )
 
+# Central API Router under /api
+api_router = APIRouter(prefix="/api")
 
-# ==========================================================
-# Routes
-# ==========================================================
+# Register individual sub-routers
+api_router.include_router(chat_router)
+api_router.include_router(memory_dashboard_router)
 
-
-app.include_router(chat_router)
-
-
-# ==========================================================
-# Root
-# ==========================================================
+# Mount central API router into FastAPI application
+app.include_router(api_router)
 
 
-@app.get("/")
-def root():
-
+@app.get("/", tags=["Health"])
+def health_check():
+    """Basic health check endpoint returning service status."""
     return {
-
-        "name": "Andrew Ng Digital Twin",
-
-        "status": "running",
-
-        "version": "1.0.0",
-
-    }
-
-
-# ==========================================================
-# Readiness
-# ==========================================================
-
-
-@app.get("/ready")
-def ready():
-
-    return {
-
-        "ready": True,
-
-        "llm": container.llm.health(),
-
-    }
-
-
-# ==========================================================
-# Liveness
-# ==========================================================
-
-
-@app.get("/live")
-def live():
-
-    return {
-
-        "alive": True,
-
+        "status": "healthy",
+        "service": "Andrew Ng Digital Twin API",
+        "version": "1.0.0"
     }

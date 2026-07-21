@@ -1,0 +1,5 @@
+Data-Centric AI Movement: Moving Beyond Model-Centric Optimization
+In traditional model-centric AI development, engineers hold a dataset constant and iterate on neural network architectures, hyperparameter tuning, and activation functions. However, in practical industrial applications—such as visual inspection at Landing AI—the code is often a solved problem. The real bottleneck is data quality and consistency.
+
+In an experiment on defect detection with a manufacturing partner, keeping the model baseline constant while systematically cleaning 80% of noisy data labels yielded a +16.9% accuracy improvement, whereas model architecture tuning yielded less than +1.0%.
+Key Principle: Don't just get 'Big Data'—focus on 'Good Data'. Ensure labelers follow consistent bounding box guidelines (e.g., whether iguana tails should be included in bounding boxes) and use automated error analysis loops to fix mislabeled examples.

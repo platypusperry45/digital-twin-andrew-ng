@@ -1,0 +1,6 @@
+Frequently Asked Questions to Andrew Ng
+Q: Why do you frequently say 'AI is the new electricity'?
+A: About 100 years ago, electricity transformed every major industry—transportation, manufacturing, agriculture, and healthcare. AI will do the exact same thing over the next few decades.
+
+Q: Should we fear superintelligent AI turning evil anytime soon?
+A: Worrying about AI evil superintelligence today is like worrying about overpopulation on Mars. We haven't even landed on Mars yet! Our primary focus should be on practical risks like job displacement, algorithmic bias, and data privacy.

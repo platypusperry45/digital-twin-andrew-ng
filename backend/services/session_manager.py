@@ -1,98 +1,64 @@
 """
-Session Manager.
+Session Manager for Digital Twin of Andrew Ng.
 
-Maintains one Conversation object per client session.
-
-Each user/browser receives an independent conversation
-history while sharing the same application services.
+Manages active conversation sessions, turn histories, and state lifecycles in memory.
 """
 
 from __future__ import annotations
 
-from threading import Lock
-from uuid import uuid4
+import time
+import threading
+from typing import Dict, List, Any, Optional
 
-from backend.llm.conversation import Conversation
+from backend.core.logger import logger
+from backend.services.chat_session import ChatSession
 
 
 class SessionManager:
     """
-    Thread-safe session manager.
-
-    Maps
-
-        session_id -> Conversation
+    Thread-safe manager storing active conversation sessions.
     """
 
     def __init__(self) -> None:
+        self._sessions: Dict[str, ChatSession] = {}
+        self._lock = threading.Lock()
+        logger.info("SessionManager initialized.")
 
-        self._sessions: dict[str, Conversation] = {}
-
-        self._lock = Lock()
-
-    # ==========================================================
-    # Session Management
-    # ==========================================================
-
-    def create_session(self) -> str:
-        """
-        Create a new conversation session.
-        """
-
-        session_id = str(uuid4())
-
+    def get_session(self, session_id: str) -> Optional[ChatSession]:
+        """Retrieves an existing session if found."""
         with self._lock:
-            self._sessions[session_id] = Conversation()
+            return self._sessions.get(session_id)
 
-        return session_id
+    def create_session(self, session_id: str) -> ChatSession:
+        """Creates and stores a new ChatSession instance."""
+        with self._lock:
+            session = ChatSession(session_id=session_id)
+            self._sessions[session_id] = session
+            logger.info(f"Created new session: '{session_id}'")
+            return session
 
-    def get(
-        self,
-        session_id: str,
-    ) -> Conversation:
+    def get_or_create(self, session_id: str) -> ChatSession:
         """
-        Return an existing conversation.
-
-        If the session doesn't exist, create it.
+        Retrieves an existing session or creates a new one atomically.
         """
-
         with self._lock:
+            if session_id not in self._sessions:
+                logger.info(f"Session '{session_id}' not found. Creating new session.")
+                self._sessions[session_id] = ChatSession(session_id=session_id)
+            return self._sessions[session_id]
 
-            conversation = self._sessions.get(session_id)
-
-            if conversation is None:
-                conversation = Conversation()
-                self._sessions[session_id] = conversation
-
-            return conversation
-
-    def exists(
-        self,
-        session_id: str,
-    ) -> bool:
-
+    def remove_session(self, session_id: str) -> bool:
+        """Removes a session from memory."""
         with self._lock:
-            return session_id in self._sessions
-
-    def delete(
-        self,
-        session_id: str,
-    ) -> None:
-
-        with self._lock:
-            self._sessions.pop(session_id, None)
+            if session_id in self._sessions:
+                del self._sessions[session_id]
+                logger.info(f"Removed session: '{session_id}'")
+                return True
+            return False
 
     def clear(self) -> None:
-
+        """Clears all active sessions."""
         with self._lock:
+            count = len(self._sessions)
             self._sessions.clear()
-
-    def count(self) -> int:
-
-        with self._lock:
-            return len(self._sessions)
-
-    def session_ids(self) -> list[str]:
-
-        with self._lock:
-            return list(self._sessions.keys())
+            logger.info(f"Cleared {count} active sessions from SessionManager.")

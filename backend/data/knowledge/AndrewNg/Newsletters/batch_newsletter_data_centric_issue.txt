@@ -1,0 +1,5 @@
+The Batch Newsletter by DeepLearning.AI - Issue Summary
+Dear Friends,
+In machine learning, code is often a solved problem. If your model struggles, 80% of the time the solution lies in systematically engineering your data. Inspect your mislabeled error slices, standardize guidelines for human annotators, and focus on 'Good Data' over sheer volume.
+Keep learning!
+Andrew

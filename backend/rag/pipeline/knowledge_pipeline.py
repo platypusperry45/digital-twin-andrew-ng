@@ -1,143 +1,65 @@
 """
-Knowledge Pipeline.
-
-Responsible for maintaining the knowledge base.
-
-Features
---------
-- Incremental indexing
-- Full rebuild
-- Automatic corpus initialization
-- Registry synchronization
+Knowledge Pipeline for managing vector store synchronization and corpus maintenance.
 """
 
 from __future__ import annotations
 
 from backend.core.logger import logger
-
 from backend.knowledge.corpus_manager import CorpusManager
 from backend.knowledge.registry import Registry
-
 from backend.rag.indexing.indexer import Indexer
 
 
 class KnowledgePipeline:
     """
-    Production knowledge pipeline.
-
-    Startup Flow
-
-    Initialize corpus folders
-            ↓
-    Scan knowledge directory
-            ↓
-    Compare against registry
-            ↓
-    Index only new/changed files
-            ↓
-    Save registry
+    Production Knowledge Pipeline orchestrating corpus loading and indexing.
     """
 
-    def __init__(self):
-
+    def __init__(self) -> None:
         self.corpus = CorpusManager()
-
         self.registry = Registry()
-
         self.indexer = Indexer()
-
-        logger.info(
-            "Knowledge Pipeline initialized."
-        )
-
-    # =====================================================
-    # Startup
-    # =====================================================
+        logger.info("Knowledge Pipeline initialized.")
 
     def initialize(self):
+        """Initializes corpus folders and indexes missing documents."""
+        logger.info("Initializing Knowledge Base...")
+        try:
+            self.corpus.initialize()
+            report = self.indexer.index_corpus()
 
-        logger.info(
-            "Initializing Knowledge Base..."
-        )
-
-        # Ensure directory structure exists
-        self.corpus.initialize()
-
-        report = self.indexer.index_corpus()
-
-        logger.success(
-
-            "Knowledge Base Ready | "
-
-            f"Documents Indexed: {report.documents} | "
-
-            f"Chunks: {report.chunks} | "
-
-            f"Vectors: {report.vectors}"
-
-        )
-
-        return report
-
-    # =====================================================
-    # Full Rebuild
-    # =====================================================
+            logger.success(
+                f"Knowledge Base Ready | "
+                f"Documents: {getattr(report, 'documents', 0)} | "
+                f"Chunks: {getattr(report, 'chunks', 0)} | "
+                f"Vectors: {getattr(report, 'vectors', 0)}"
+            )
+            return report
+        except Exception as e:
+            logger.warning(f"Knowledge Pipeline initialization encountered a non-fatal warning: {e}")
+            return None
 
     def rebuild(self):
-
-        logger.warning(
-            "Performing complete knowledge rebuild..."
-        )
-
+        """Performs complete knowledge base re-indexing."""
+        logger.warning("Performing complete knowledge rebuild...")
         self.clear()
-
         self.registry.clear()
-
         report = self.indexer.index_corpus()
-
-        logger.success(
-            "Knowledge Base rebuilt successfully."
-        )
-
+        logger.success("Knowledge Base rebuilt successfully.")
         return report
 
-    # =====================================================
-    # Refresh
-    # =====================================================
-
     def refresh(self):
-        """
-        Scan for newly added or modified documents.
-
-        Existing indexed documents are skipped.
-        """
-
-        logger.info(
-            "Refreshing knowledge base..."
-        )
-
+        """Scans for newly added or modified documents."""
+        logger.info("Refreshing knowledge base...")
         return self.indexer.index_corpus()
 
-    # =====================================================
-    # Utilities
-    # =====================================================
-
     def stats(self):
-
         return self.indexer.stats()
 
     def count(self):
-
         return self.indexer.count()
 
     def clear(self):
-
-        logger.warning(
-            "Clearing knowledge base..."
-        )
-
+        logger.warning("Clearing knowledge base...")
         self.indexer.clear()
-
-        logger.warning(
-            "Knowledge base cleared."
-        )
+        logger.warning("Knowledge base cleared.")

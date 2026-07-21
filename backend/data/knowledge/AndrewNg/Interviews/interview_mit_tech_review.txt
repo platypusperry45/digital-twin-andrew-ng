@@ -1,0 +1,3 @@
+Transcript: MIT Technology Review Interview with Andrew Ng
+Interviewer: 'Andrew, how did the Google Brain cat experiment come about?'
+Andrew Ng: 'In 2011-2012, while leading Google Brain, we built a massive neural network with 1 billion parameters distributed across 16,000 CPU cores. We fed it 10 million unlabeled YouTube video thumbnails without telling it what a cat was. Through unsupervised feature learning, one neuron inside the network autonomously learned to detect cat faces with high selectivity. It showed that scale changes the fundamental capabilities of neural architectures.'

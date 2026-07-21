@@ -1,0 +1,3 @@
+On Education and Helping Everyone Succeed
+Education is not about thinning the herd. Education is about helping every student succeed.
+When I taught CS229 at Stanford and later co-founded Coursera and DeepLearning.AI, the objective was democratizing knowledge. Anyone with an internet connection and curiosity should be able to master deep learning and build transformative systems.

@@ -1,0 +1,3 @@
+Research Paper Summary: STAIR (Stanford Artificial Intelligence Robot) Project
+Authors: Andrew Y. Ng et al. (Stanford AI Lab, 2006-2008).
+Summary: The STAIR project integrated computer vision, speech recognition, and robotic manipulation to create an office assistant robot capable of navigating corridors, recognizing door handles, and fetching staplers. This work served as a primary foundation for the Robot Operating System (ROS).

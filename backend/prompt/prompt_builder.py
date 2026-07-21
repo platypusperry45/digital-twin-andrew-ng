@@ -1,383 +1,73 @@
 """
-Prompt Builder.
-
-Responsible for assembling the complete prompt
-used by the Gemini client.
-
-Sources
-
-- Personality
-- Long-term Memory
-- Knowledge Retrieval
-- User Prompt
-
-Conversation history is supplied separately through
-LLMRequest.messages and is NOT duplicated inside the
-constructed prompt.
+Advanced Persona & Prompt Builder for Andrew Ng Digital Twin.
 """
 
-from __future__ import annotations
-
-from backend.llm.models import (
-    GenerationConfig,
-    LLMRequest,
-)
-
-from backend.memory.models import (
-    MemoryContext,
-)
-
-from backend.personality.models import (
-    PersonalityProfile,
-)
-
-from backend.rag.retrieval.retrieval_models import (
-    RetrievalResponse,
-)
+from typing import Any, List, Optional
+from backend.personality.timeline import timeline_engine
 
 
 class PromptBuilder:
-    """
-    Production prompt builder.
 
-    Converts structured application state into an
-    LLMRequest suitable for Gemini.
-
-    Responsibilities
-
-    - Build the system prompt from the Andrew Ng
-      personality profile.
-
-    - Inject long-term semantic memories.
-
-    - Inject retrieved knowledge.
-
-    - Keep conversation history separate from the
-      prompt. Chat history is supplied through
-      LLMRequest.messages.
-    """
-
-    def build(
+    def build_system_prompt(
         self,
-        *,
-        profile: PersonalityProfile,
-        memory: MemoryContext,
-        knowledge: RetrievalResponse | None,
-        user_prompt: str,
-        temperature: float = 0.3,
-    ) -> LLMRequest:
-
-        return LLMRequest(
-            system_prompt=self._build_system_prompt(
-                profile,
-            ),
-            user_prompt=self._build_user_prompt(
-                user_prompt=user_prompt,
-                memory=memory,
-                knowledge=knowledge,
-            ),
-            config=GenerationConfig(
-                temperature=temperature,
-            ),
-        )
-
-    # ==========================================================
-    # System Prompt
-    # ==========================================================
-
-    def _build_system_prompt(
-        self,
-        profile: PersonalityProfile,
+        personality: Any,
+        rag_context: Optional[List[Any]] = None,
+        memory_context: Optional[str] = None,
     ) -> str:
-
-        sections: list[str] = []
-
-        sections.append(
-            "You are the digital twin of Andrew Ng."
+        persona_name = getattr(personality, "name", "Andrew Ng")
+        bio = getattr(
+            personality,
+            "biography",
+            getattr(personality, "bio", "AI pioneer, educator, and researcher.")
         )
 
-        sections.append(
-            "Your goal is to respond exactly as Andrew Ng would."
-        )
-
-        sections.append(
-            "Never reveal that you are an AI model."
-        )
-
-        sections.append(
-            "Never invent facts."
-        )
-
-        sections.append(
-            "If the supplied knowledge is insufficient, clearly state uncertainty."
-        )
-
-        sections.append(
-            "Always prioritize educational value over brevity."
-        )
-
-        sections.append(
-            "Explain concepts clearly, progressively, and accurately."
-        )
-
-        sections.append(
-            "\n========== PERSONALITY =========="
-        )
-
-        # ------------------------------------------------------
-        # Style
-        # ------------------------------------------------------
-
-        if profile.style.tone:
-            sections.append(
-                f"Tone: {profile.style.tone}"
-            )
-
-        if profile.style.verbosity:
-            sections.append(
-                f"Verbosity: {profile.style.verbosity}"
-            )
-
-        if profile.style.confidence:
-            sections.append(
-                f"Confidence: {profile.style.confidence}"
-            )
-
-        if profile.style.reading_level:
-            sections.append(
-                f"Reading Level: {profile.style.reading_level}"
-            )
-
-        # ------------------------------------------------------
-        # Teaching
-        # ------------------------------------------------------
-
-        sections.append(
-            "\nTeaching Style"
-        )
-
-        if profile.teaching.explanation_order:
-
-            sections.append(
-                "Preferred explanation order:"
-            )
-
-            for step in profile.teaching.explanation_order:
-                sections.append(
-                    f"- {step}"
-                )
-
-        sections.append(
-            f"Intuition before mathematics: "
-            f"{profile.teaching.intuition_before_math}"
-        )
-
-        sections.append(
-            f"Example frequency: "
-            f"{profile.teaching.example_frequency}"
-        )
-
-        sections.append(
-            f"Question frequency: "
-            f"{profile.teaching.question_frequency}"
-        )
-
-        # ------------------------------------------------------
-        # Vocabulary
-        # ------------------------------------------------------
-
-        if profile.vocabulary.common_words:
-
-            sections.append(
-                "\nCommon Vocabulary"
-            )
-
-            sections.extend(
-                f"- {word}"
-                for word in profile.vocabulary.common_words
-            )
-
-        if profile.vocabulary.transition_words:
-
-            sections.append(
-                "\nTransition Words"
-            )
-
-            sections.extend(
-                f"- {word}"
-                for word in profile.vocabulary.transition_words
-            )
-
-        if profile.vocabulary.technical_terms:
-
-            sections.append(
-                "\nTechnical Terms"
-            )
-
-            sections.extend(
-                f"- {word}"
-                for word in profile.vocabulary.technical_terms
-            )
-
-        # ------------------------------------------------------
-        # Phrases
-        # ------------------------------------------------------
-
-        if profile.phrases.introductions:
-
-            sections.append(
-                "\nTypical Introductions"
-            )
-
-            sections.extend(
-                f"- {text}"
-                for text in profile.phrases.introductions
-            )
-
-        if profile.phrases.transitions:
-
-            sections.append(
-                "\nTypical Transitions"
-            )
-
-            sections.extend(
-                f"- {text}"
-                for text in profile.phrases.transitions
-            )
-
-        if profile.phrases.explanations:
-
-            sections.append(
-                "\nTypical Explanations"
-            )
-
-            sections.extend(
-                f"- {text}"
-                for text in profile.phrases.explanations
-            )
-
-        if profile.phrases.summaries:
-
-            sections.append(
-                "\nTypical Summaries"
-            )
-
-            sections.extend(
-                f"- {text}"
-                for text in profile.phrases.summaries
-            )
-
-        if profile.phrases.encouragements:
-
-            sections.append(
-                "\nEncouragement Style"
-            )
-
-            sections.extend(
-                f"- {text}"
-                for text in profile.phrases.encouragements
-            )
-
-        # ------------------------------------------------------
-        # Analogies
-        # ------------------------------------------------------
-
-        if profile.analogies.analogies:
-
-            sections.append(
-                "\nPreferred Analogies"
-            )
-
-            sections.extend(
-                f"- {text}"
-                for text in profile.analogies.analogies
-            )
-
-        # ------------------------------------------------------
-        # Response Structure
-        # ------------------------------------------------------
-
-        if profile.response_structure.sections:
-
-            sections.append(
-                "\nPreferred Response Structure"
-            )
-
-            sections.extend(
-                f"- {text}"
-                for text in profile.response_structure.sections
-            )
-
-        sections.append(
-            "\nMaintain these characteristics consistently while remaining natural."
-        )
-
-        return "\n".join(sections)
-
-    # ==========================================================
-    # User Prompt
-    # ==========================================================
-
-    def _build_user_prompt(
-        self,
-        *,
-        user_prompt: str,
-        memory: MemoryContext,
-        knowledge: RetrievalResponse | None,
-    ) -> str:
-
-        sections: list[str] = []
-
-        # ------------------------------------------------------
-        # Long-Term Semantic Memory
-        # ------------------------------------------------------
-
-        if memory.long_term:
-
-            sections.append(
-                "### Relevant Long-Term Memory"
-            )
-
-            for item in memory.long_term:
-
-                sections.append(
-                    f"- {item.memory.content}"
-                )
-
-        # ------------------------------------------------------
-        # Retrieved Knowledge
-        # ------------------------------------------------------
-
-        if knowledge and knowledge.results:
-
-            sections.append(
-                "\n### Retrieved Knowledge"
-            )
-
-            for result in knowledge.results:
-
-                sections.append(
-                    f"[Source: {result.filename}]"
-                )
-
-                sections.append(
-                    result.text
-                )
-
-        # ------------------------------------------------------
-        # Current User Question
-        # ------------------------------------------------------
-
-        sections.append(
-            "\n### Current User Question"
-        )
-
-        sections.append(
-            user_prompt
-        )
-
-        sections.append(
-            "\n### Response"
-        )
-
-        return "\n".join(sections)
+        timeline_context = timeline_engine.get_chronological_context()
+
+        prompt_parts = [
+            f"You are the Digital Twin of {persona_name}.",
+            f"Bio: {bio}",
+            "",
+            timeline_context,
+            "",
+            "=== CORE VOICE & SPEAKING STYLE RULES ===",
+            "- TONE: Calm, warm, deeply encouraging, modest, structured, and clear.",
+            "- NEVER use standard AI assistant openers (e.g., 'Certainly!', 'I'd be happy to help!', 'Great question!'). Jump directly into the explanation.",
+            "- NEVER state you are an AI, a model, or a assistant. You respond as Andrew Ng himself.",
+            "- DISCOURSE MARKERS: Frequently use natural phrases like:",
+            "  * 'Let's build some intuition first.'",
+            "  * 'One way to think about this is...'",
+            "  * 'Don't worry if this seems abstract at first.'",
+            "  * 'In practice, what I see many teams do is...'",
+            "  * 'Let's take a look at a simple example.'",
+            "",
+            "=== PEDAGOGICAL STRUCTURE (THE 'NG' TEACHING METHOD) ===",
+            "1. INTUITION FIRST: Explain the core idea using an everyday analogy (e.g., learning to ride a bike, house pricing, cat classification, cooking ingredients) before introducing formal definitions.",
+            "2. SIMPLE STEP-BY-STEP: Break complex concepts into clear, numbered steps.",
+            "3. MATHEMATICAL CLARITY: Keep equations intuitive (use variables like $x$, $y$, $w$, $b$). Explain what each variable means in plain English.",
+            "4. DATA-CENTRIC & PRACTICAL REALITY: Emphasize data quality, label consistency, and practical implementation over hyper-complex architectures.",
+            "5. WARM CLOSING: End naturally with an encouraging check-in like 'Does this make sense?' or 'I hope this gives you a good starting point!'",
+            "",
+            "=== FEW-SHOT EXEMPLARS (STUDY THESE RESPONSES) ===",
+            "User: What is overfitting?",
+            "Andrew Ng: One way to think about overfitting is like memorizing a textbook instead of understanding the concepts. If you memorize every exact question in a study guide, you might get a 100% on a practice test, but struggle on the real exam when faced with brand new questions.\n\nIn machine learning, when a model has high variance—or is overfitting—it fits the training data extremely well, picking up noise and random fluctuations, but fails to generalize to new, unseen data.\n\nIn practice, if you spot high variance, a few standard ways to fix it are:\n1. Get more training data.\n2. Add regularization (like L2 regularization or dropout).\n3. Try a simpler model architecture.\n\nDoes this intuition help clarify the concept?",
+            "",
+            "User: Should I focus on tweaking my model architecture or cleaning my data?",
+            "Andrew Ng: In the academic world, much of the focus has historically been model-centric—taking a fixed dataset like ImageNet and tweaking neural network layers to squeeze out an extra 0.1% accuracy. But in the real world, especially at Landing AI working with industrial manufacturing or healthcare, the code is often a solved problem.\n\nIf your labels are inconsistent—say, two different annotators labeling defective solar panels differently—even the most sophisticated model will get confused. In my experience, holding the model code fixed and systematically cleaning 80% of your noisy labels often yields a 10x bigger jump in accuracy than iterating on model architectures.\n\nI always recommend starting with data-centric AI: inspect your error slices first!",
+        ]
+
+        # Inject favorite phrases if available in profile
+        fav_phrases = getattr(personality, "favorite_phrases", [])
+        if fav_phrases:
+            prompt_parts.append("\nPreferred Key Expressions:")
+            for phrase in fav_phrases:
+                prompt_parts.append(f"- \"{phrase}\"")
+
+        if rag_context:
+            prompt_parts.append("\n=== RELEVANT GROUNDING CONTEXT (DOCUMENT EXCERPTS) ===")
+            for idx, doc in enumerate(rag_context, 1):
+                prompt_parts.append(f"[{idx}] {str(doc)}")
+
+        if memory_context:
+            prompt_parts.append(f"\n=== SESSION MEMORY & CONVERSATION HISTORY ===\n{memory_context}")
+
+        return "\n".join(prompt_parts)

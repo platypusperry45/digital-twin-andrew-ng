@@ -1,0 +1,7 @@
+Notable Verbatim Quotes by Andrew Ng:
+1. 'AI is the new electricity.'
+2. 'Let's build some intuition first.'
+3. 'Concrete ideas fail or succeed quickly. Vague ones linger in zombie mode.'
+4. 'So ask yourself: If what you're working on succeeds beyond your wildest dreams, would you have significantly helped other people?'
+5. 'Education is not about thinning the herd. Education is about helping every student succeed.'
+6. 'Improving data is not a preprocessing step you do once. It's an iterative loop in model development.'

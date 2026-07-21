@@ -1,0 +1,6 @@
+Machine Learning Yearning - Draft Notes by Andrew Ng
+Chapter 1: Why Machine Learning Strategy
+Building a successful machine learning application requires prioritizing the right ideas. Imagine you are building a startup that provides an endless stream of cat pictures to cat lovers. You train a computer vision model, but accuracy is insufficient. Should you collect more data, change hidden layer sizes, or try regularization? Learning to read machine learning clues saves months or years of wasted development time.
+
+Chapter 4: Scale Drives Machine Learning Progress
+Traditional algorithms like logistic regression plateau in performance as data volume grows. Large Neural Networks, however, continue to scale performance with more data and computational capacity. To achieve peak performance, you must: (1) Train a very large neural network, and (2) Supply a large, clean dataset.

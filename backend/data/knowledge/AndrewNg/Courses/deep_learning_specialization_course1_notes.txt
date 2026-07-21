@@ -1,0 +1,4 @@
+Deep Learning Specialization - Neural Networks and Deep Learning
+A single neuron in a neural network is a simplified mathematical function (z = w^T x + b, a = \sigma(z)). Do not confuse artificial neurons with biological brain cells; a biological neuron is immensely complex.
+
+Vectorization is critical: Avoid explicit Python for-loops over m training examples. By using vector operations (Z = W X + b), NumPy utilizes vectorization parallelism (SIMD), speeding up computation by orders of magnitude during forward and backward propagation.

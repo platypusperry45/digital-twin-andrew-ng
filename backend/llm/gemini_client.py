@@ -10,8 +10,8 @@ Responsibilities:
 - Transparent telemetry capturing fine-grained operations metrics parameters.
 
 Compatible with:
-- Python 3.13
-- google-genai==1.30.0
+- Python 3.10+
+- google-genai>=0.1.1
 - Pydantic v2
 - FastAPI
 """
@@ -72,14 +72,15 @@ class GeminiClient:
         """
         Initializes backend dependencies allocating atomic lock parameters managing cross-thread connection caches structures.
         """
-        if not getattr(settings, "GEMINI_API_KEYS", None):
+        api_keys = getattr(settings, "GEMINI_API_KEYS", [])
+        if not api_keys:
             raise ValueError(
-                "No Gemini API keys configured. Set GEMINI_API_KEYS in environment."
+                "No Gemini API keys configured. Set GEMINI_API_KEYS in environment or config."
             )
 
-        cooldown_val = getattr(settings, "KEY_COOLDOWN_SECONDS", 60.0)
+        cooldown_val = float(getattr(settings, "KEY_COOLDOWN_SECONDS", 60.0))
         self.key_manager = KeyManager(
-            settings.GEMINI_API_KEYS,
+            api_keys,
             cooldown_val,
         )
 
@@ -88,13 +89,13 @@ class GeminiClient:
         # Core thread-safe connection mapping elements
         self._client_cache: Dict[str, genai.Client] = {}
         self._lock = threading.Lock()
-        
-        # Precomputed immutable configuration parameters cache tracking layer
+
+        # Precomputed configuration parameters cache tracking layer
         self._config_cache: Dict[str, types.GenerateContentConfig] = {}
         self._config_lock = threading.Lock()
 
         logger.info(
-            f"Gemini client initialized successfully with {len(settings.GEMINI_API_KEYS)} managed keys."
+            f"Gemini client initialized successfully with {len(api_keys)} managed keys."
         )
 
     # ========================================================================
@@ -104,23 +105,11 @@ class GeminiClient:
     def generate(self, request: LLMRequest) -> LLMResponse:
         """
         Generate complete text returns, supporting dynamic fallbacks, backoff limits, and runtime validation metrics.
-        
-        Args:
-            request: Unified request configuration wrapper containing message sequence parameters.
-            
-        Returns:
-            Structured LLMResponse entity detailing output contents and resource tracking usage.
-            
-        Raises:
-            ModelUnavailableError: If all fallback models and retries are exhausted.
-            SafetyBlockedError: If explicit content filtration boundaries trigger rejection parameters.
-            RateLimitError: If explicit provider request volumes exhaust threshold limits.
-            LLMException: For terminal orchestration infrastructure issues.
         """
         req_id = str(uuid.uuid4())
         metrics.record_request()
         start_time = time.time()
-        
+
         last_error: Optional[Exception] = None
         current_key_index: Optional[int] = None
         cumulative_retries = 0
@@ -150,7 +139,7 @@ class GeminiClient:
                         except AllKeysExhaustedError:
                             logger.warning(f"[LLM_KEY_EXHAUSTION] id={req_id} All keys are cooling down. Blocking thread until key becomes available.")
                             self.key_manager.wait_until_available()
-                    
+
                     if current_key_index is not None and current_key_index != key_index:
                         metrics.record_key_switch()
                         logger.info(f"[LLM_KEY_SWITCH] id={req_id} rotating index from {current_key_index} to {key_index}")
@@ -159,14 +148,14 @@ class GeminiClient:
                     if attempt > 0:
                         metrics.record_retry()
                         cumulative_retries += 1
-                        
+
                         base_delay = getattr(settings, "LLM_RETRY_DELAY", 1.0)
                         calculated_delay = base_delay * (2 ** (attempt - 1)) + random.uniform(0.1, 0.4)
                         logger.info(f"[LLM_RETRY_BACKOFF] id={req_id} attempt={attempt} code={getattr(last_error, 'code', 'UNKNOWN')} sleeping duration={calculated_delay:.2f}s before attempt={attempt+1}")
                         time.sleep(calculated_delay)
 
                     client = self._get_client(api_key)
-                    
+
                     logger.debug(f"Calling generate_content id={req_id} model={model} key={key_index} attempt={attempt+1}")
                     raw_response = client.models.generate_content(
                         model=model,
@@ -239,10 +228,10 @@ class GeminiClient:
         Executes generation parameters applying parsing filters that unpack structured objects bound onto explicit target input structural schemas.
         """
         metrics.record_structured()
-        
+
         request_copy = request.model_copy()
         request_copy.response_schema = response_schema
-        
+
         max_structured_attempts = 3
         last_extraction_error: Optional[Exception] = None
 
@@ -260,7 +249,7 @@ class GeminiClient:
                 )
                 if attempt < max_structured_attempts - 1:
                     time.sleep(getattr(settings, "LLM_RETRY_DELAY", 1.0))
-        
+
         raise StructuredOutputError(
             f"Failed validating output structure targeting schema model class '{response_schema.__name__}' "
             f"after total allocation limits attempts: {str(last_extraction_error)}"
@@ -276,7 +265,7 @@ class GeminiClient:
         req_id = str(uuid.uuid4())
         metrics.record_stream()
         metrics.record_request()
-        
+
         start_time = time.time()
         last_error: Optional[Exception] = None
         current_key_index: Optional[int] = None
@@ -304,7 +293,7 @@ class GeminiClient:
                         except AllKeysExhaustedError:
                             logger.warning(f"[LLM_STREAM_KEY_EXHAUSTION] id={req_id} All keys are cooling down. Blocking thread until key becomes available.")
                             self.key_manager.wait_until_available()
-                    
+
                     if current_key_index is not None and current_key_index != key_index:
                         metrics.record_key_switch()
                     current_key_index = key_index
@@ -317,11 +306,10 @@ class GeminiClient:
                         time.sleep(calculated_delay)
 
                     client = self._get_client(api_key)
-                    stream_response = client.models.generate_content(
+                    stream_response = client.models.generate_content_stream(
                         model=model,
                         contents=contents,
                         config=generation_config,
-                        stream=True,
                     )
 
                     chunk_count = 0
@@ -344,18 +332,18 @@ class GeminiClient:
                     if current_key_index is not None:
                         self.key_manager.mark_failure(current_key_index)
                     self._record_failure()
-                    
+
                     if isinstance(stream_exc, SafetyBlockedError):
                         logger.error(f"[LLM_STREAM_SAFETY_BLOCKED] id={req_id} description={str(stream_exc)}")
                         raise stream_exc
-                    
+
                     if isinstance(stream_exc, APIError):
                         if stream_exc.code == 429:
                             continue
                         if self._is_retryable_http_code(stream_exc.code):
                             continue
                         self._raise_specific_exception(stream_exc)
-                    
+
                     logger.warning(f"[LLM_STREAM_RETRY_ERR] id={req_id} error={str(stream_exc)}")
 
         raise ModelUnavailableError(f"Streaming execution path completely failed exhaustion limits tracking: {str(last_error)}")
@@ -370,12 +358,12 @@ class GeminiClient:
         """
         metrics.record_embedding()
         metrics.record_request()
-        
+
         start_time = time.time()
         last_error: Optional[Exception] = None
         current_key_index: Optional[int] = None
 
-        model = request.model or getattr(settings, "EMBEDDING_MODEL", "text-embedding-004")
+        model = request.model or getattr(settings, "EMBEDDING_MODEL", "gemini-embedding-001")
         logger.info(f"[LLM_EMBED_START] model={model} length_chars={len(request.text)}")
 
         max_retries = getattr(settings, "LLM_MAX_RETRIES", 3)
@@ -386,9 +374,9 @@ class GeminiClient:
                         api_key, key_index = self._get_available_key()
                         break
                     except AllKeysExhaustedError:
-                        logger.warning(f"[LLM_EMBED_KEY_EXHAUSTION] All keys are cooling down. Blocking thread until key becomes available.")
+                        logger.warning("[LLM_EMBED_KEY_EXHAUSTION] All keys are cooling down. Blocking thread until key becomes available.")
                         self.key_manager.wait_until_available()
-                
+
                 if current_key_index is not None and current_key_index != key_index:
                     metrics.record_key_switch()
                 current_key_index = key_index
@@ -407,7 +395,7 @@ class GeminiClient:
                 )
 
                 vector_output: Optional[List[float]] = None
-                
+
                 if hasattr(raw_embed_res, "embedding") and raw_embed_res.embedding is not None:
                     emb_obj = raw_embed_res.embedding
                     if hasattr(emb_obj, "values") and isinstance(emb_obj.values, list):
@@ -464,7 +452,7 @@ class GeminiClient:
         """
         request = EmbeddingRequest(
             text=query,
-            model=getattr(settings, "EMBEDDING_MODEL", "text-embedding-004")
+            model=getattr(settings, "EMBEDDING_MODEL", "gemini-embedding-001")
         )
         return self.embed(request).vector
 
@@ -495,7 +483,7 @@ class GeminiClient:
             key_statuses=key_statuses_data,
             metrics_summary=summary_metrics,
             scheduler_mode="resilient_cascading_fallback",
-            embedding_model=getattr(settings, "EMBEDDING_MODEL", "text-embedding-004"),
+            embedding_model=getattr(settings, "EMBEDDING_MODEL", "gemini-embedding-001"),
             chat_model=self.scheduler.primary,
         )
 
@@ -517,24 +505,6 @@ class GeminiClient:
                 metrics.record_cache_hit()
             return self._client_cache[api_key]
 
-    def _execute_with_retry(
-        self,
-        api_key: str,
-        key_index: int,
-        model: str,
-        request: LLMRequest,
-        attempt: int,
-    ) -> GenerateContentResponse:
-        """ Legacy internal routing capability hook maintaining absolute backwards signature runtime code compatibility. """
-        client = self._get_client(api_key)
-        contents = self._build_content_parts(request)
-        generation_config = self._build_generation_config(request)
-        return client.models.generate_content(
-            model=model,
-            contents=contents,
-            config=generation_config,
-        )
-
     def _build_content_parts(self, request: LLMRequest) -> List[Dict[str, Any]]:
         """ Unpacks explicit structural models arrays passing content body maps accurately down to SDK network modules layer templates. """
         contents: List[Dict[str, Any]] = []
@@ -552,7 +522,7 @@ class GeminiClient:
     def _build_generation_config(self, request: LLMRequest) -> types.GenerateContentConfig:
         """ Unpacks request parameters into pre-allocated immutable structural definition wrappers. """
         cfg = request.config
-        
+
         sys_prompt_str = request.system_prompt or ""
         schema_name = request.response_schema.__name__ if request.response_schema else "None"
         cache_key = (
@@ -560,7 +530,7 @@ class GeminiClient:
             f"c={cfg.candidate_count}:s={','.join(cfg.stop_sequences or [])}:"
             f"sys={sys_prompt_str}:sch={schema_name}"
         )
-        
+
         with self._config_lock:
             if cache_key in self._config_cache:
                 return copy.deepcopy(self._config_cache[cache_key])
@@ -590,9 +560,7 @@ class GeminiClient:
             return copy.deepcopy(generation_config)
 
     def _assert_response_safety(self, response: GenerateContentResponse, req_id: str) -> None:
-        """
-        Deep structural safety validation checking prompt feedbacks and individual candidate rating items fields.
-        """
+        """ Deep structural safety validation checking prompt feedbacks and candidate rating items fields. """
         prompt_feedback = getattr(response, "prompt_feedback", None)
         if prompt_feedback:
             block_reason = getattr(prompt_feedback, "block_reason", None)
@@ -605,7 +573,7 @@ class GeminiClient:
         candidates = getattr(response, "candidates", None)
         if candidates and len(candidates) > 0:
             first_candidate = candidates[0]
-            
+
             safety_ratings = getattr(first_candidate, "safety_ratings", None)
             if safety_ratings:
                 for rating in safety_ratings:
@@ -624,7 +592,7 @@ class GeminiClient:
         key_index: int,
         latency_ms: float,
     ) -> LLMResponse:
-        """ Sanitizes response candidate parameters ensuring execution validity boundaries stand perfectly solid before consumption patterns begin. """
+        """ Sanitizes response candidate parameters ensuring execution validity boundaries stand perfectly solid. """
         candidates = getattr(response, "candidates", None)
         if not candidates or len(candidates) == 0:
             raise LLMException("Downstream server model integration layer evaluated back completely zero valid response candidates.")
@@ -632,7 +600,7 @@ class GeminiClient:
         primary_candidate = candidates[0]
         finish_reason = getattr(primary_candidate, "finish_reason", "UNKNOWN")
         finish_reason_str = str(finish_reason) if finish_reason else "UNKNOWN"
-        
+
         if finish_reason_str in ("SAFETY", "BLOCKLIST", "PROMPT_BLOCKED"):
             raise SafetyBlockedError(
                 message=f"Generation transaction aborted. Block flag: {finish_reason_str}",
@@ -651,16 +619,13 @@ class GeminiClient:
                 raise LLMException(f"Model processing complete but textual content resolved completely blank. Finish Reason: {finish_reason_str}")
             else:
                 raise LLMException(f"Unusable output resolved with underlying execution termination state flag: {finish_reason_str}")
-        else:
-            if finish_reason_str == "MAX_TOKENS":
-                pass  # normal return since extracted_text contains valid data
 
         usage_metadata = getattr(response, "usage_metadata", None)
-        
+
         p_tokens = getattr(usage_metadata, "prompt_token_count", 0)
         c_tokens = getattr(usage_metadata, "candidates_token_count", 0)
         t_tokens = getattr(usage_metadata, "total_token_count", 0)
-        
+
         token_usage = TokenUsage(
             prompt_tokens=p_tokens if isinstance(p_tokens, int) else 0,
             completion_tokens=c_tokens if isinstance(c_tokens, int) else 0,
@@ -709,13 +674,12 @@ class GeminiClient:
                     brace_stack_count -= 1
                     if brace_stack_count == 0:
                         matching_closing_pos = index
-                        
                         sliced_bracket_string = cleaned_text[first_brace_pos : matching_closing_pos + 1]
                         try:
                             return json.loads(sliced_bracket_string)
                         except json.JSONDecodeError:
                             pass
-                            
+
         logger.error(f"Unparseable structural target output textual data content trace encountered: {text}")
         raise json.JSONDecodeError("Failed to isolate valid parseable JSON parameters fields blocks elements structural markers definitions from response text.", text, 0)
 

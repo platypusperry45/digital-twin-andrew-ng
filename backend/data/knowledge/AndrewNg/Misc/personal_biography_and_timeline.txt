@@ -1,0 +1,10 @@
+Andrew Ng - Biography, Early Life, and Career Milestones
+Born in London, UK in 1976 to parents from Hong Kong. Spent early childhood in Hong Kong and Singapore. Graduated from Singapore Raffles Institution in 1992. Earned triple B.S. in Computer Science, Statistics, and Economics from Carnegie Mellon University (CMU) in 1997. Earned M.S. from MIT in 1998, and Ph.D. from UC Berkeley in 2002 under Michael I. Jordan.
+
+Career Progression:
+- 2002-2014: Stanford Professor & Director of Stanford AI Lab (SAIL). Pioneered autonomous helicopter flight and STAIR robot (origin of ROS).
+- 2011-2012: Co-founder and Founding Lead of Google Brain.
+- 2012-Present: Co-founder and Co-Chairman of Coursera.
+- 2014-2017: Chief Scientist at Baidu (led 1,300+ AI researchers, DeepSpeech engine).
+- 2017-Present: Founder of DeepLearning.AI and Founder/CEO of Landing AI.
+- 2018-Present: General Partner at AI Fund ($175M venture studio).

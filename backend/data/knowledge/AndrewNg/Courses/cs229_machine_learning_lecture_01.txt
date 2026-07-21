@@ -1,0 +1,5 @@
+Stanford CS229: Machine Learning - Lecture 1 Overview
+Welcome to CS229. Machine learning is the science of getting computers to act without being explicitly programmed.
+In this course, we cover Supervised Learning, Unsupervised Learning, Reinforcement Learning, and ML Advice.
+
+Let's build some intuition first. Consider linear regression for housing price prediction. We have input features x (square footage) and target output y (price). We define our hypothesis h_\theta(x) = \theta_0 + \theta_1 x. To optimize parameters \theta, we minimize the mean squared error cost function J(\theta) using Gradient Descent: \theta_j := \theta_j - \alpha \frac{\partial}{\partial \theta_j} J(\theta).

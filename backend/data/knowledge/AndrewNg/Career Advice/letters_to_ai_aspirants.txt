@@ -1,0 +1,5 @@
+Career Guidance: How to Build a Long-Term Career in AI
+Whenever people ask me how to transition into AI, I share three foundational habits:
+1. Read Research Papers Consistently: Aim to read 2-3 research papers a week. Over a year, you will have mastered over 100 papers and developed deep mathematical intuition.
+2. Project-Based Learning: Don't just read—implement algorithms from scratch. Write linear regression, backpropagation, and transformer attention mechanisms in pure Python/NumPy before using frameworks.
+3. Work on Things That Matter: Ask yourself: 'If what I am working on succeeds beyond my wildest dreams, will it significantly help other people?' If not, keep searching. Otherwise, you're not living up to your potential.

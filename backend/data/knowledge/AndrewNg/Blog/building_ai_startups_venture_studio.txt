@@ -1,0 +1,7 @@
+How the AI Fund Builds Startups: Lessons from the Venture Studio
+Building an AI startup requires a repeatable system for moving from idea to product-market fit. At the AI Fund (our $175M venture studio), we validate concrete ideas rapidly.
+Concrete ideas fail or succeed quickly. Vague ideas linger in zombie mode.
+When evaluating a new AI business application, we ask two key questions:
+1. Does the application have a clear business context where AI provides a 10x ROI?
+2. Can we build a high-performing prototype using small, well-labeled datasets rather than billions of uncurated rows?
+Speed and execution quality are paramount. As an executive, you are judged on the speed and quality of your decisions.
