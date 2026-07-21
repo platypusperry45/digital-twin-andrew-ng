@@ -4,16 +4,16 @@ Prompt Builder.
 Responsible for assembling the complete prompt
 used by the Gemini client.
 
-Sources:
+Sources
 
 - Personality
-- Memory
+- Long-term Memory
 - Knowledge Retrieval
 - User Prompt
 
-Output:
-
-LLMRequest
+Conversation history is supplied separately through
+LLMRequest.messages and is NOT duplicated inside the
+constructed prompt.
 """
 
 from __future__ import annotations
@@ -38,17 +38,23 @@ from backend.rag.retrieval.retrieval_models import (
 
 class PromptBuilder:
     """
-    Builds production-ready prompts.
+    Production prompt builder.
 
-    The builder separates:
+    Converts structured application state into an
+    LLMRequest suitable for Gemini.
 
-    - System Prompt
-    - User Prompt
+    Responsibilities
 
-    instead of producing one massive prompt.
+    - Build the system prompt from the Andrew Ng
+      personality profile.
 
-    This allows GeminiClient to use
-    native conversation handling.
+    - Inject long-term semantic memories.
+
+    - Inject retrieved knowledge.
+
+    - Keep conversation history separate from the
+      prompt. Chat history is supplied through
+      LLMRequest.messages.
     """
 
     def build(
@@ -58,158 +64,259 @@ class PromptBuilder:
         memory: MemoryContext,
         knowledge: RetrievalResponse | None,
         user_prompt: str,
-        temperature: float = 0.7,
+        temperature: float = 0.3,
     ) -> LLMRequest:
-        """
-        Build a complete LLMRequest.
-
-        Parameters
-        ----------
-        profile
-            Andrew Ng personality profile.
-
-        memory
-            Retrieved memory context.
-
-        knowledge
-            Retrieved RAG documents.
-
-        user_prompt
-            User question.
-
-        temperature
-            Generation temperature.
-        """
-
-        system_prompt = self._build_system_prompt(
-            profile=profile,
-        )
-
-        final_user_prompt = self._build_user_prompt(
-            user_prompt=user_prompt,
-            memory=memory,
-            knowledge=knowledge,
-        )
 
         return LLMRequest(
-
-            system_prompt=system_prompt,
-
-            user_prompt=final_user_prompt,
-
+            system_prompt=self._build_system_prompt(
+                profile,
+            ),
+            user_prompt=self._build_user_prompt(
+                user_prompt=user_prompt,
+                memory=memory,
+                knowledge=knowledge,
+            ),
             config=GenerationConfig(
                 temperature=temperature,
             ),
-
         )
 
-    # =====================================================
+    # ==========================================================
     # System Prompt
-    # =====================================================
+    # ==========================================================
 
     def _build_system_prompt(
         self,
         profile: PersonalityProfile,
     ) -> str:
 
-        prompt: list[str] = []
+        sections: list[str] = []
 
-        prompt.append(
+        sections.append(
             "You are the digital twin of Andrew Ng."
         )
 
-        prompt.append(
-            "Respond exactly as Andrew Ng would."
+        sections.append(
+            "Your goal is to respond exactly as Andrew Ng would."
         )
 
-        prompt.append(
-            "Your answers must reflect Andrew Ng's "
-            "teaching style, communication patterns, "
-            "reasoning process, values and personality."
+        sections.append(
+            "Never reveal that you are an AI model."
         )
 
-        prompt.append(
-            "Never mention that you are an AI model."
-        )
-
-        prompt.append(
+        sections.append(
             "Never invent facts."
         )
 
-        prompt.append(
-            "If the supplied knowledge is insufficient, "
-            "state uncertainty honestly."
+        sections.append(
+            "If the supplied knowledge is insufficient, clearly state uncertainty."
         )
 
-        # -------------------------------------------------
-        # Personality
-        # -------------------------------------------------
+        sections.append(
+            "Always prioritize educational value over brevity."
+        )
 
-        prompt.append("\n===== Personality =====")
+        sections.append(
+            "Explain concepts clearly, progressively, and accurately."
+        )
 
-        if profile.summary:
+        sections.append(
+            "\n========== PERSONALITY =========="
+        )
 
-            prompt.append(profile.summary)
+        # ------------------------------------------------------
+        # Style
+        # ------------------------------------------------------
 
-        if profile.communication_style:
-
-            prompt.append(
-                "\nCommunication Style:"
+        if profile.style.tone:
+            sections.append(
+                f"Tone: {profile.style.tone}"
             )
 
-            prompt.append(
-                profile.communication_style
+        if profile.style.verbosity:
+            sections.append(
+                f"Verbosity: {profile.style.verbosity}"
             )
 
-        if profile.teaching_style:
-
-            prompt.append(
-                "\nTeaching Style:"
+        if profile.style.confidence:
+            sections.append(
+                f"Confidence: {profile.style.confidence}"
             )
 
-            prompt.append(
-                profile.teaching_style
+        if profile.style.reading_level:
+            sections.append(
+                f"Reading Level: {profile.style.reading_level}"
             )
 
-        if profile.thinking_style:
+        # ------------------------------------------------------
+        # Teaching
+        # ------------------------------------------------------
 
-            prompt.append(
-                "\nThinking Style:"
+        sections.append(
+            "\nTeaching Style"
+        )
+
+        if profile.teaching.explanation_order:
+
+            sections.append(
+                "Preferred explanation order:"
             )
 
-            prompt.append(
-                profile.thinking_style
-            )
-
-        if profile.values:
-
-            prompt.append(
-                "\nCore Values:"
-            )
-
-            for value in profile.values:
-
-                prompt.append(
-                    f"- {value}"
+            for step in profile.teaching.explanation_order:
+                sections.append(
+                    f"- {step}"
                 )
 
-        if profile.catchphrases:
+        sections.append(
+            f"Intuition before mathematics: "
+            f"{profile.teaching.intuition_before_math}"
+        )
 
-            prompt.append(
-                "\nFrequently Used Expressions:"
+        sections.append(
+            f"Example frequency: "
+            f"{profile.teaching.example_frequency}"
+        )
+
+        sections.append(
+            f"Question frequency: "
+            f"{profile.teaching.question_frequency}"
+        )
+
+        # ------------------------------------------------------
+        # Vocabulary
+        # ------------------------------------------------------
+
+        if profile.vocabulary.common_words:
+
+            sections.append(
+                "\nCommon Vocabulary"
             )
 
-            for phrase in profile.catchphrases:
+            sections.extend(
+                f"- {word}"
+                for word in profile.vocabulary.common_words
+            )
 
-                prompt.append(
-                    f"- {phrase}"
-                )
+        if profile.vocabulary.transition_words:
 
-        return "\n".join(prompt)
+            sections.append(
+                "\nTransition Words"
+            )
 
-    # =====================================================
+            sections.extend(
+                f"- {word}"
+                for word in profile.vocabulary.transition_words
+            )
+
+        if profile.vocabulary.technical_terms:
+
+            sections.append(
+                "\nTechnical Terms"
+            )
+
+            sections.extend(
+                f"- {word}"
+                for word in profile.vocabulary.technical_terms
+            )
+
+        # ------------------------------------------------------
+        # Phrases
+        # ------------------------------------------------------
+
+        if profile.phrases.introductions:
+
+            sections.append(
+                "\nTypical Introductions"
+            )
+
+            sections.extend(
+                f"- {text}"
+                for text in profile.phrases.introductions
+            )
+
+        if profile.phrases.transitions:
+
+            sections.append(
+                "\nTypical Transitions"
+            )
+
+            sections.extend(
+                f"- {text}"
+                for text in profile.phrases.transitions
+            )
+
+        if profile.phrases.explanations:
+
+            sections.append(
+                "\nTypical Explanations"
+            )
+
+            sections.extend(
+                f"- {text}"
+                for text in profile.phrases.explanations
+            )
+
+        if profile.phrases.summaries:
+
+            sections.append(
+                "\nTypical Summaries"
+            )
+
+            sections.extend(
+                f"- {text}"
+                for text in profile.phrases.summaries
+            )
+
+        if profile.phrases.encouragements:
+
+            sections.append(
+                "\nEncouragement Style"
+            )
+
+            sections.extend(
+                f"- {text}"
+                for text in profile.phrases.encouragements
+            )
+
+        # ------------------------------------------------------
+        # Analogies
+        # ------------------------------------------------------
+
+        if profile.analogies.analogies:
+
+            sections.append(
+                "\nPreferred Analogies"
+            )
+
+            sections.extend(
+                f"- {text}"
+                for text in profile.analogies.analogies
+            )
+
+        # ------------------------------------------------------
+        # Response Structure
+        # ------------------------------------------------------
+
+        if profile.response_structure.sections:
+
+            sections.append(
+                "\nPreferred Response Structure"
+            )
+
+            sections.extend(
+                f"- {text}"
+                for text in profile.response_structure.sections
+            )
+
+        sections.append(
+            "\nMaintain these characteristics consistently while remaining natural."
+        )
+
+        return "\n".join(sections)
+
+    # ==========================================================
     # User Prompt
-    # =====================================================
+    # ==========================================================
 
     def _build_user_prompt(
         self,
@@ -221,9 +328,9 @@ class PromptBuilder:
 
         sections: list[str] = []
 
-        # -------------------------------------------------
-        # Memory
-        # -------------------------------------------------
+        # ------------------------------------------------------
+        # Long-Term Semantic Memory
+        # ------------------------------------------------------
 
         if memory.long_term:
 
@@ -237,30 +344,11 @@ class PromptBuilder:
                     f"- {item.memory.content}"
                 )
 
-        if memory.short_term:
+        # ------------------------------------------------------
+        # Retrieved Knowledge
+        # ------------------------------------------------------
 
-            sections.append(
-                "\n### Recent Conversation"
-            )
-
-            for turn in memory.short_term:
-
-                sections.append(
-                    f"User: {turn.user}"
-                )
-
-                sections.append(
-                    f"Assistant: {turn.assistant}"
-                )
-
-        # -------------------------------------------------
-        # Knowledge
-        # -------------------------------------------------
-
-        if (
-            knowledge is not None
-            and knowledge.results
-        ):
+        if knowledge and knowledge.results:
 
             sections.append(
                 "\n### Retrieved Knowledge"
@@ -268,20 +356,28 @@ class PromptBuilder:
 
             for result in knowledge.results:
 
-                sections.append(result.text)
+                sections.append(
+                    f"[Source: {result.filename}]"
+                )
 
-        # -------------------------------------------------
-        # Current User Query
-        # -------------------------------------------------
+                sections.append(
+                    result.text
+                )
+
+        # ------------------------------------------------------
+        # Current User Question
+        # ------------------------------------------------------
 
         sections.append(
-            "\n### User Question"
+            "\n### Current User Question"
         )
 
-        sections.append(user_prompt)
+        sections.append(
+            user_prompt
+        )
 
         sections.append(
-            "\n### Assistant"
+            "\n### Response"
         )
 
         return "\n".join(sections)

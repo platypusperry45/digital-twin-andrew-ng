@@ -24,17 +24,21 @@ Return Response
 
 from __future__ import annotations
 
+import time
+
 from backend.core.logger import logger
 
+from backend.llm.exceptions import (
+    LLMException,
+    SafetyBlockedError,
+    RateLimitError,
+    ModelUnavailableError,
+)
+
 from backend.llm.gemini_client import GeminiClient
-from backend.llm.models import LLMRequest
-
 from backend.memory.memory_manager import MemoryManager
-
 from backend.personality.manager import PersonalityManager
-
 from backend.prompt.prompt_builder import PromptBuilder
-
 from backend.rag.retrieval.retriever import Retriever
 
 from backend.services.models import (
@@ -45,32 +49,34 @@ from backend.services.models import (
 
 class ConversationService:
     """
-    Coordinates every subsystem.
+    Coordinates every backend subsystem.
 
-    Memory
-        ↓
-    Knowledge
-        ↓
-    Personality
-        ↓
-    Prompt
-        ↓
-    Gemini
-        ↓
-    Save Conversation
+    This class contains orchestration logic only.
     """
 
-    def __init__(self):
+    def __init__(
+        self,
+        *,
+        personality: PersonalityManager,
+        memory: MemoryManager,
+        retriever: Retriever,
+        prompt_builder: PromptBuilder,
+        llm: GeminiClient,
+    ) -> None:
 
-        self.memory = MemoryManager()
+        self.personality = personality
+        self.memory = memory
+        self.retriever = retriever
+        self.prompt_builder = prompt_builder
+        self.llm = llm
 
-        self.personality = PersonalityManager()
+        logger.info(
+            "ConversationService initialized."
+        )
 
-        self.knowledge = Retriever()
-
-        self.prompt_builder = PromptBuilder()
-
-        self.llm = GeminiClient()
+    # ==========================================================
+    # Chat
+    # ==========================================================
 
     def chat(
         self,
@@ -81,65 +87,147 @@ class ConversationService:
             "Conversation request received."
         )
 
-        # --------------------------------------------------
-        # Memory Retrieval
-        # --------------------------------------------------
+        started = time.time()
 
-        memory = self.memory.retrieve_context(
-            request.message
-        )
+        try:
 
-        # --------------------------------------------------
-        # Knowledge Retrieval
-        # --------------------------------------------------
+            # --------------------------------------------------
+            # Memory
+            # --------------------------------------------------
 
-        knowledge = self.knowledge.retrieve(
-            request.message
-        )
+            memory_context = (
+                self.memory.retrieve_context(
+                    request.message
+                )
+            )
 
-        # --------------------------------------------------
-        # Personality
-        # --------------------------------------------------
+            # --------------------------------------------------
+            # Knowledge
+            # --------------------------------------------------
 
-        profile = self.personality.get_profile()
+            knowledge_context = (
+                self.retriever.retrieve(
+                    request.message
+                )
+            )
 
-        # --------------------------------------------------
-        # Prompt Construction
-        # --------------------------------------------------
+            # --------------------------------------------------
+            # Personality
+            # --------------------------------------------------
 
-        llm_request = self.prompt_builder.build(
-            user_prompt=request.message,
-            personality=profile,
-            memory=memory,
-            knowledge=knowledge,
-        )
+            profile = (
+                self.personality.get_profile()
+            )
 
-        # --------------------------------------------------
-        # Gemini
-        # --------------------------------------------------
+            # --------------------------------------------------
+            # Prompt
+            # --------------------------------------------------
 
-        llm_response = self.llm.generate(
-            llm_request
-        )
+            llm_request = (
+                self.prompt_builder.build(
+                    profile=profile,
+                    memory=memory_context,
+                    knowledge=knowledge_context,
+                    user_prompt=request.message,
+                )
+            )
 
-        # --------------------------------------------------
-        # Save Memory
-        # --------------------------------------------------
+            # --------------------------------------------------
+            # Generate
+            # --------------------------------------------------
 
-        self.memory.add_conversation(
-            user=request.message,
-            assistant=llm_response.text,
-        )
+            llm_response = (
+                self.llm.generate(
+                    llm_request
+                )
+            )
 
-        logger.success(
-            "Conversation completed."
-        )
+            # --------------------------------------------------
+            # Persist Conversation
+            # --------------------------------------------------
 
-        return ConversationResponse(
-            response=llm_response.text,
-            model=llm_response.model_used,
-            latency_ms=llm_response.latency_ms,
-            prompt_tokens=llm_response.usage.prompt_tokens,
-            completion_tokens=llm_response.usage.completion_tokens,
-            total_tokens=llm_response.usage.total_tokens,
-        )
+            self.memory.add_conversation(
+                user=request.message,
+                assistant=llm_response.text,
+            )
+
+            elapsed = (
+                time.time() - started
+            ) * 1000
+
+            logger.success(
+                f"Conversation completed "
+                f"in {elapsed:.2f} ms."
+            )
+
+            return ConversationResponse(
+
+                response=llm_response.text,
+
+                model=llm_response.model_used,
+
+                latency_ms=llm_response.latency_ms,
+
+                prompt_tokens=llm_response.usage.prompt_tokens,
+
+                completion_tokens=llm_response.usage.completion_tokens,
+
+                total_tokens=llm_response.usage.total_tokens,
+
+            )
+
+        except SafetyBlockedError:
+
+            logger.warning(
+                "Conversation blocked by Gemini safety."
+            )
+
+            raise
+
+        except RateLimitError:
+
+            logger.warning(
+                "Rate limit reached."
+            )
+
+            raise
+
+        except ModelUnavailableError:
+
+            logger.error(
+                "No Gemini model available."
+            )
+
+            raise
+
+        except LLMException:
+
+            logger.exception(
+                "LLM pipeline failed."
+            )
+
+            raise
+
+        except Exception:
+
+            logger.exception(
+                "Conversation pipeline crashed."
+            )
+
+            raise
+
+    # ==========================================================
+    # Health
+    # ==========================================================
+
+    def health(self) -> dict:
+
+        return {
+
+            "memory": self.memory.stats(),
+
+            "retriever": self.retriever.store.stats(),
+
+            "llm": self.llm.health(),
+
+        }

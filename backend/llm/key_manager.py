@@ -1,184 +1,272 @@
 """
-Gemini API key manager.
+Thread-safe API key manager.
 
-Handles:
-- round robin rotation
-- cooldown
-- failures
-- thread safety
+Responsibilities
+----------------
+- Round-robin key rotation
+- Cooldown management
+- Success/failure tracking
+- Health reporting
+- Thread-safe operation
 """
 
-from datetime import datetime, timedelta
-from threading import Lock
-from typing import List, Optional
+from __future__ import annotations
 
-from backend.llm.models import KeyStatus
+import threading
+import time
+from dataclasses import dataclass
+
 from backend.llm.exceptions import AllKeysExhaustedError
+from backend.llm.models import KeyStatus
+
+
+# ==========================================================
+# Internal Metadata
+# ==========================================================
+
+
+@dataclass(slots=True)
+class _KeyInfo:
+
+    key: str
+
+    index: int
+
+    requests: int = 0
+
+    successes: int = 0
+
+    failures: int = 0
+
+    last_used: float = 0.0
+
+    cooldown_until: float = 0.0
+
+    @property
+    def active(self) -> bool:
+
+        return time.time() >= self.cooldown_until
+
+    @property
+    def failure_rate(self) -> float:
+
+        if self.requests == 0:
+            return 0.0
+
+        return self.failures / self.requests
+
+
+# ==========================================================
+# Key Manager
+# ==========================================================
 
 
 class KeyManager:
+    """
+    Thread-safe Gemini API key rotation.
+    """
 
     def __init__(
         self,
-        keys: List[str],
-        cooldown_seconds: int = 60,
-    ):
+        api_keys: list[str],
+        cooldown_seconds: float,
+    ) -> None:
 
-        if not keys:
-            raise ValueError("No Gemini API keys provided")
+        if not api_keys:
+            raise ValueError("At least one API key is required.")
 
-        self.keys = [
-            key.strip()
-            for key in keys
-            if key.strip()
+        self._cooldown_seconds = cooldown_seconds
+
+        self._lock = threading.Lock()
+
+        self._cursor = 0
+
+        self._keys = [
+
+            _KeyInfo(
+                key=key,
+                index=index,
+            )
+
+            for index, key in enumerate(api_keys)
+
         ]
 
-        self.cooldown_seconds = cooldown_seconds
+    # ======================================================
+    # Public
+    # ======================================================
 
-        self.current_index = 0
-
-        self.failures = {
-            i: 0
-            for i in range(len(self.keys))
-        }
-
-        self.cooldown_until = {
-            i: None
-            for i in range(len(self.keys))
-        }
-
-        self.last_used = {
-            i: None
-            for i in range(len(self.keys))
-        }
-
-        self.lock = Lock()
-
-    def get_key(self):
+    def get_key(
+        self,
+    ) -> tuple[str, int]:
         """
-        Returns the next available key.
+        Returns the next available API key.
 
-        Raises:
-            AllKeysExhaustedError
+        Raises
+        ------
+        AllKeysExhaustedError
         """
 
-        with self.lock:
+        with self._lock:
 
-            total = len(self.keys)
+            now = time.time()
+
+            total = len(self._keys)
 
             for _ in range(total):
 
-                index = self.current_index
+                info = self._keys[self._cursor]
 
-                self.current_index = (
-                    self.current_index + 1
-                ) % total
+                self._cursor = (self._cursor + 1) % total
 
-                if self._available(index):
+                if now >= info.cooldown_until:
 
-                    self.last_used[index] = datetime.utcnow()
+                    info.requests += 1
+                    info.last_used = now
 
-                    return (
-                        self.keys[index],
-                        index,
-                    )
+                    return info.key, info.index
 
         raise AllKeysExhaustedError(
-            "All Gemini API keys are cooling down or exhausted."
+            "All Gemini API keys are currently cooling down."
         )
 
-    def mark_failure(
-        self,
-        index: int,
-    ):
-
-        with self.lock:
-
-            self.failures[index] += 1
-
-            self.cooldown_until[index] = (
-                datetime.utcnow()
-                + timedelta(
-                    seconds=self.cooldown_seconds
-                )
-            )
+    # ======================================================
 
     def mark_success(
         self,
         index: int,
-    ):
+    ) -> None:
 
-        with self.lock:
+        with self._lock:
 
-            self.failures[index] = 0
+            self._keys[index].successes += 1
 
-            self.cooldown_until[index] = None
+    # ======================================================
 
-    def _available(
+    def mark_failure(
         self,
         index: int,
-    ) -> bool:
+    ) -> None:
 
-        cooldown = self.cooldown_until[index]
+        with self._lock:
 
-        if cooldown is None:
-            return True
+            info = self._keys[index]
 
-        if datetime.utcnow() >= cooldown:
+            info.failures += 1
 
-            self.cooldown_until[index] = None
+            info.cooldown_until = (
+                time.time()
+                + self._cooldown_seconds
+            )
 
-            return True
+    # ======================================================
 
-        return False
+    def wait_until_available(self) -> None:
+        """
+        Blocks until one key leaves cooldown.
+        """
 
-    def status(self):
+        while True:
 
-        result = []
+            with self._lock:
 
-        for index in range(len(self.keys)):
+                now = time.time()
 
-            result.append(
+                remaining = [
+
+                    max(
+                        0.0,
+                        key.cooldown_until - now,
+                    )
+
+                    for key in self._keys
+
+                ]
+
+            minimum = min(remaining)
+
+            if minimum <= 0:
+                return
+
+            time.sleep(
+                min(minimum, 0.5)
+            )
+
+    # ======================================================
+
+    def reset(self) -> None:
+        """
+        Clears cooldowns.
+        """
+
+        with self._lock:
+
+            for key in self._keys:
+
+                key.cooldown_until = 0.0
+
+                key.requests = 0
+
+                key.successes = 0
+
+                key.failures = 0
+
+                key.last_used = 0.0
+
+    # ======================================================
+
+    def status(
+        self,
+    ) -> list[KeyStatus]:
+
+        with self._lock:
+
+            now = time.time()
+
+            return [
 
                 KeyStatus(
 
-                    index=index,
+                    index=key.index,
 
-                    active=self._available(index),
+                    active=key.active,
 
-                    failures=self.failures[index],
+                    requests=key.requests,
 
-                    last_used=self.last_used[index],
+                    successes=key.successes,
 
-                    cooldown_until=self.cooldown_until[index],
+                    failures=key.failures,
+
+                    failure_rate=key.failure_rate,
+
+                    last_used=key.last_used,
+
+                    cooldown_until=key.cooldown_until,
+
+                    seconds_remaining=max(
+                        0.0,
+                        key.cooldown_until - now,
+                    ),
+
                 )
 
+                for key in self._keys
+
+            ]
+
+    # ======================================================
+
+    @property
+    def total_keys(self) -> int:
+
+        return len(self._keys)
+
+    @property
+    def active_keys(self) -> int:
+
+        with self._lock:
+
+            return sum(
+                key.active
+                for key in self._keys
             )
-
-        return result
-
-    def reset(self):
-        """
-        Clears cooldowns.
-        Useful after replacing API keys.
-        """
-
-        with self.lock:
-
-            for i in range(len(self.keys)):
-                self.failures[i] = 0
-                self.cooldown_until[i] = None
-
-    def wait_until_available(self):
-
-       while True:
-
-            with self.lock:
-
-                for index in range(len(self.keys)):
-
-                   if self._available(index):
-                       return
-
-            import time
-            time.sleep(1)

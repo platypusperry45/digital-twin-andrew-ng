@@ -1,42 +1,58 @@
 """
 Knowledge Pipeline.
 
-Responsible for building the knowledge base.
+Responsible for maintaining the knowledge base.
 
-Flow:
-
-Documents
-    ↓
-Chunking
-    ↓
-Embeddings
-    ↓
-Vector Store
+Features
+--------
+- Incremental indexing
+- Full rebuild
+- Automatic corpus initialization
+- Registry synchronization
 """
+
+from __future__ import annotations
 
 from backend.core.logger import logger
 
-from backend.rag.loaders.document_loader import DocumentLoader
-from backend.rag.chunking.text_chunker import TextChunker
-from backend.rag.embeddings.embedding_engine import EmbeddingEngine
-from backend.rag.vectorstore.chroma_store import ChromaStore
+from backend.knowledge.corpus_manager import CorpusManager
+from backend.knowledge.registry import Registry
+
+from backend.rag.indexing.indexer import Indexer
 
 
 class KnowledgePipeline:
+    """
+    Production knowledge pipeline.
+
+    Startup Flow
+
+    Initialize corpus folders
+            ↓
+    Scan knowledge directory
+            ↓
+    Compare against registry
+            ↓
+    Index only new/changed files
+            ↓
+    Save registry
+    """
 
     def __init__(self):
 
-        self.loader = DocumentLoader()
+        self.corpus = CorpusManager()
 
-        self.chunker = TextChunker()
+        self.registry = Registry()
 
-        self.embedding = EmbeddingEngine()
-
-        self.store = ChromaStore()
+        self.indexer = Indexer()
 
         logger.info(
             "Knowledge Pipeline initialized."
         )
+
+    # =====================================================
+    # Startup
+    # =====================================================
 
     def initialize(self):
 
@@ -44,62 +60,84 @@ class KnowledgePipeline:
             "Initializing Knowledge Base..."
         )
 
-        documents = self.loader.load_directory()
+        # Ensure directory structure exists
+        self.corpus.initialize()
 
-        if not documents:
-
-            logger.warning(
-                "No knowledge documents found."
-            )
-
-            return
-
-        chunks = self.chunker.chunk_documents(
-            documents
-        )
-
-        if not chunks:
-
-            logger.warning(
-                "No chunks created."
-            )
-
-            return
-
-        vectors = self.embedding.embed_documents(
-            chunks
-        )
-
-        if not vectors:
-
-            logger.warning(
-                "No vectors generated."
-            )
-
-            return
-
-        self.store.clear()
-
-        self.store.add_many(
-            vectors
-        )
+        report = self.indexer.index_corpus()
 
         logger.success(
-            f"Knowledge Base Ready ({len(vectors)} vectors)."
+
+            "Knowledge Base Ready | "
+
+            f"Documents Indexed: {report.documents} | "
+
+            f"Chunks: {report.chunks} | "
+
+            f"Vectors: {report.vectors}"
+
         )
+
+        return report
+
+    # =====================================================
+    # Full Rebuild
+    # =====================================================
 
     def rebuild(self):
 
-        logger.info(
-            "Rebuilding knowledge base..."
+        logger.warning(
+            "Performing complete knowledge rebuild..."
         )
 
-        self.initialize()
+        self.clear()
+
+        self.registry.clear()
+
+        report = self.indexer.index_corpus()
+
+        logger.success(
+            "Knowledge Base rebuilt successfully."
+        )
+
+        return report
+
+    # =====================================================
+    # Refresh
+    # =====================================================
+
+    def refresh(self):
+        """
+        Scan for newly added or modified documents.
+
+        Existing indexed documents are skipped.
+        """
+
+        logger.info(
+            "Refreshing knowledge base..."
+        )
+
+        return self.indexer.index_corpus()
+
+    # =====================================================
+    # Utilities
+    # =====================================================
+
+    def stats(self):
+
+        return self.indexer.stats()
+
+    def count(self):
+
+        return self.indexer.count()
 
     def clear(self):
 
-        self.store.clear()
+        logger.warning(
+            "Clearing knowledge base..."
+        )
+
+        self.indexer.clear()
 
         logger.warning(
-            "Knowledge Base cleared."
+            "Knowledge base cleared."
         )

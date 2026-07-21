@@ -2,6 +2,8 @@
 Conversation service models.
 """
 
+from __future__ import annotations
+
 from datetime import datetime
 
 from pydantic import BaseModel, Field
@@ -17,6 +19,8 @@ class ConversationRequest(BaseModel):
         min_length=1,
     )
 
+    session_id: str | None = None
+
 
 class ConversationResponse(BaseModel):
     """
@@ -24,6 +28,8 @@ class ConversationResponse(BaseModel):
     """
 
     response: str
+
+    session_id: str
 
     model: str
 
@@ -36,5 +42,5 @@ class ConversationResponse(BaseModel):
     total_tokens: int = 0
 
     timestamp: datetime = Field(
-        default_factory=datetime.utcnow
+        default_factory=datetime.utcnow,
     )

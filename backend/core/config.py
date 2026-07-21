@@ -114,7 +114,12 @@ class Settings(BaseSettings):
 
     KEY_COOLDOWN_SECONDS: int = 60
 
+    # ==========================
+    # Conversation
+    # ==========================
 
+    MAX_CONVERSATION_HISTORY = 10
+    
     # ==========================
     # Feature Flags
     # ==========================

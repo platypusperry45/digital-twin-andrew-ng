@@ -1,49 +1,87 @@
 """
 Central memory manager.
 
-Coordinates:
-- Short-term memory
-- Long-term memory
-- Retrieval
-- Summarization
+Responsibilities
+----------------
+- Global long-term memory
+- Semantic retrieval
+- Conversation summarization
+
+Session-specific short-term memory is owned by
+ChatSession.
 """
+
+from __future__ import annotations
 
 from backend.core.logger import logger
 
-from backend.memory.short_term import ShortTermMemory
 from backend.memory.long_term import LongTermMemory
 from backend.memory.retriever import MemoryRetriever
+from backend.memory.short_term import ShortTermMemory
 from backend.memory.summarizer import ConversationSummarizer
 
 
 class MemoryManager:
+    """
+    Coordinates global memory services.
 
-    def __init__(self):
+    ChatSession owns short-term memory.
+    MemoryManager owns long-term memory.
+    """
 
-        self.short_term = ShortTermMemory()
+    def __init__(self) -> None:
 
         self.long_term = LongTermMemory()
 
         self.retriever = MemoryRetriever(
-            self.short_term,
             self.long_term,
-            )
+        )
 
         self.summarizer = ConversationSummarizer()
 
-        # Number of conversation turns before summarization
         self.summary_threshold = 20
+
+    # ==========================================================
+    # Retrieval
+    # ==========================================================
+
+    def retrieve_context(
+        self,
+        *,
+        query: str,
+        short_term: ShortTermMemory,
+    ):
+        """
+        Retrieve context using the active session's
+        short-term memory together with global
+        long-term memory.
+        """
+
+        return self.retriever.retrieve(
+            query=query,
+            short_term=short_term,
+        )
+
+    # ==========================================================
+    # Persistence
+    # ==========================================================
 
     def add_conversation(
         self,
+        *,
+        short_term: ShortTermMemory,
         user: str,
         assistant: str,
     ) -> None:
         """
-        Store one conversation turn.
+        Store conversation.
+
+        Short-term memory is session scoped.
+
+        Long-term memory is shared.
         """
 
-        self.short_term.add(
+        short_term.add(
             user=user,
             assistant=assistant,
         )
@@ -58,46 +96,42 @@ class MemoryManager:
             content=assistant,
         )
 
-        logger.info(
-            "Conversation stored."
-        )
+        logger.info("Conversation stored.")
 
-        if self.short_term.size() >= self.summary_threshold:
+        if short_term.size() >= self.summary_threshold:
+            self._summarize(short_term)
 
-            self._summarize()
+    # ==========================================================
+    # Maintenance
+    # ==========================================================
 
-    def retrieve_context(
+    def clear(
         self,
-        query: str,
-    ):
+        short_term: ShortTermMemory,
+    ) -> None:
 
-        return self.retriever.retrieve(
-            query=query,
-        )
-
-    def clear(self):
-
-        self.short_term.clear()
+        short_term.clear()
 
         self.long_term.clear()
 
-        logger.info(
-            "Memory cleared."
-        )
+        logger.info("Memory cleared.")
 
-    def stats(self):
+    def stats(self) -> dict:
 
         return {
-
-            "short_term": self.short_term.size(),
-
             "long_term": self.long_term.count(),
-
         }
 
-    def _summarize(self):
+    # ==========================================================
+    # Internal
+    # ==========================================================
 
-        turns = self.short_term.get_all()
+    def _summarize(
+        self,
+        short_term: ShortTermMemory,
+    ) -> None:
+
+        turns = short_term.get_all()
 
         if not turns:
             return
@@ -116,20 +150,14 @@ class MemoryManager:
         )
 
         self.long_term.add(
-
             role="summary",
-
             content=summary,
-
             metadata={
-
                 "generated": True,
-
             },
-
         )
 
-        self.short_term.clear()
+        short_term.clear()
 
         logger.info(
             "Conversation summarized and archived."
